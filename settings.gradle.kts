@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Wild Music Player"
+rootProject.name = "wild_music_player"
 include(":app")
