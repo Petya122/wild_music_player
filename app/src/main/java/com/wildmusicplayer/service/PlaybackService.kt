@@ -1,15 +1,18 @@
 package com.wildmusicplayer.service
 
+import android.app.PendingIntent
+import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.wildmusicplayer.MainActivity
 
 /**
  * Background MediaSessionService providing continuous audio playback,
  * Bluetooth AVRCP metadata synchronization, audio focus handling (GPS ducking),
- * and becoming-noisy protection for car audio systems (e.g., Nissan Qashqai).
+ * and becoming-noisy protection for car audio systems (e.g., 2017 Nissan Qashqai).
  */
 class PlaybackService : MediaSessionService() {
 
@@ -28,7 +31,19 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
-        mediaSession = MediaSession.Builder(this, player).build()
+        val sessionActivityIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val sessionActivityPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            sessionActivityIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        mediaSession = MediaSession.Builder(this, player)
+            .setSessionActivity(sessionActivityPendingIntent)
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
