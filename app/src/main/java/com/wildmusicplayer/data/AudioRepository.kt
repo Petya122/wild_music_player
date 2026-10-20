@@ -20,14 +20,19 @@ class AudioRepository(private val context: Context) {
     suspend fun getLocalSongs(): List<Song> = withContext(Dispatchers.IO) {
         val songList = mutableListOf<Song>()
 
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.ALBUM_ID
-        )
+            MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.DATA
+        ).apply {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                add(MediaStore.Audio.Media.RELATIVE_PATH)
+            }
+        }.toTypedArray()
 
         // Filter: real music only, minimum 10 seconds to exclude notification chimes
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= 10000"
@@ -48,6 +53,10 @@ class AudioRepository(private val context: Context) {
             val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val dataColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+            val relativePathColumn = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+            } else -1
 
             val albumArtBaseUri = Uri.parse("content://media/external/audio/albumart")
 
@@ -58,6 +67,23 @@ class AudioRepository(private val context: Context) {
                 val rawAlbum = cursor.getString(albumColumn) ?: "Unknown Album"
                 val duration = cursor.getLong(durationColumn)
                 val albumId = cursor.getLong(albumIdColumn)
+
+                val rawData = if (dataColumn >= 0) cursor.getString(dataColumn) else null
+                val rawRelativePath = if (relativePathColumn >= 0) cursor.getString(relativePathColumn) else null
+
+                val folderName = when {
+                    !rawData.isNullOrBlank() -> {
+                        try {
+                            java.io.File(rawData).parentFile?.name?.takeIf { it.isNotBlank() } ?: "Music"
+                        } catch (_: Exception) {
+                            "Music"
+                        }
+                    }
+                    !rawRelativePath.isNullOrBlank() -> {
+                        rawRelativePath.trim('/').split('/').lastOrNull { it.isNotBlank() } ?: "Music"
+                    }
+                    else -> "Music"
+                }
 
                 val contentUri = ContentUris.withAppendedId(collectionUri, id)
                 val albumArtUri = if (albumId >= 0) {
@@ -76,7 +102,8 @@ class AudioRepository(private val context: Context) {
                         album = album.trim(),
                         duration = duration,
                         contentUri = contentUri,
-                        albumArtUri = albumArtUri
+                        albumArtUri = albumArtUri,
+                        folderName = folderName
                     )
                 )
             }

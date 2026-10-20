@@ -85,29 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "⚙️",
-                        title = "Dedicated Settings Screen",
-                        desc = "Full-page settings with grouped cards for Themes, Display, Updates, and app controls."
-                    )
-                    ChangelogItem(
-                        emoji = "ℹ️",
-                        title = "About & Credits",
-                        desc = "New About & Credits modal crediting Petya122 and open-source libraries."
+                        emoji = "📁",
+                        title = "Folder Playlists & Import",
+                        desc = "Auto-detects device folders (e.g. Personal Favorite) and imports full folders as playlists."
                     )
                     ChangelogItem(
                         emoji = "🧭",
-                        title = "4-Tab Bottom Navigation",
-                        desc = "Clean Home, Songs, Search, and Playlists tabs with stacked miniplayer."
-                    )
-                    ChangelogItem(
-                        emoji = "⚡",
-                        title = "Home Quick Play & Recents",
-                        desc = "1-tap 'Shuffle All' music and horizontal carousel of your recently played songs."
+                        title = "Uninterrupted Navigation",
+                        desc = "Seamlessly switch between all tabs while music plays without having to cancel playback."
                     )
                     ChangelogItem(
                         emoji = "✨",
-                        title = "Smooth Startup & Update Flow",
-                        desc = "Update log pops up seamlessly after the branded splash screen finishes loading."
+                        title = "Visual & Branding Polish",
+                        desc = "Welcome title updated to 'Wild Music Player' and fixed Shuffle button text wrapping."
+                    )
+                    ChangelogItem(
+                        emoji = "⚙️",
+                        title = "Dedicated Settings Screen",
+                        desc = "Full-page settings with grouped cards for Themes, Display, Updates, and About & Credits."
                     )
                 }
 

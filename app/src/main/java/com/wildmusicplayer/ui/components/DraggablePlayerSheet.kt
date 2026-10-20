@@ -178,12 +178,12 @@ fun DraggablePlayerSheet(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(0, offsetY.value.roundToInt()) }
-                .then(dragModifier)
         ) {
             // Full Screen Player
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(if (isExpanded || progress > 0.05f) dragModifier else Modifier)
                     .graphicsLayer {
                         alpha = ((progress - 0.15f) / 0.85f).coerceIn(0f, 1f)
                     }
@@ -223,6 +223,7 @@ fun DraggablePlayerSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
+                    .then(if (!isExpanded || progress < 0.6f) dragModifier else Modifier)
                     .graphicsLayer {
                         alpha = (1f - progress * 2.5f).coerceIn(0f, 1f)
                     }

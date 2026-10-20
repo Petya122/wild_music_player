@@ -450,7 +450,7 @@ fun MusicPlayerApp(
                                 onSongClick = playSong,
                                 onPlayPlaylist = playPlaylist,
                                 onToggleFavorite = { playlistRepository.toggleFavorite(it) },
-                                onCreatePlaylist = { playlistRepository.createPlaylist(it) },
+                                onCreatePlaylist = { name, songIds -> playlistRepository.createPlaylist(name, songIds) },
                                 onDeletePlaylist = { playlistRepository.deletePlaylist(it) }
                             )
                         }

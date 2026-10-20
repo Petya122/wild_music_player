@@ -10,18 +10,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
@@ -29,15 +33,20 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,6 +63,7 @@ import com.wildmusicplayer.model.Song
 sealed class PlaylistSelection {
     data object None : PlaylistSelection()
     data object Favorites : PlaylistSelection()
+    data class Folder(val folderName: String, val songs: List<Song>) : PlaylistSelection()
     data class Custom(val playlist: Playlist) : PlaylistSelection()
 }
 
@@ -67,15 +77,23 @@ fun PlaylistsScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onPlayPlaylist: (List<Song>, shuffle: Boolean) -> Unit,
     onToggleFavorite: (Long) -> Unit,
-    onCreatePlaylist: (String) -> Unit,
+    onCreatePlaylist: (name: String, songIds: List<Long>) -> Unit,
     onDeletePlaylist: (String) -> Unit
 ) {
     var selectedPlaylist by remember { mutableStateOf<PlaylistSelection>(PlaylistSelection.None) }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var createMode by remember { mutableIntStateOf(0) } // 0 = From Folder, 1 = Custom Name
     var newPlaylistName by remember { mutableStateOf("") }
 
     val favoriteSongs = remember(allSongs, favoriteSongIds) {
         allSongs.filter { favoriteSongIds.contains(it.id) }
+    }
+
+    // Auto-organize all songs by their parent device folder
+    val folderPlaylists = remember(allSongs) {
+        allSongs.groupBy { it.folderName }
+            .map { (folder, songs) -> folder to songs }
+            .sortedByDescending { it.second.size }
     }
 
     when (val selection = selectedPlaylist) {
@@ -94,7 +112,7 @@ fun PlaylistsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                             Text(
                                 text = "Your Playlists",
                                 style = MaterialTheme.typography.headlineSmall,
@@ -102,7 +120,7 @@ fun PlaylistsScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Favorites and custom collections",
+                                text = "Folders, favorites, and custom collections",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -110,7 +128,8 @@ fun PlaylistsScreen(
 
                         FilledTonalButton(
                             onClick = { showCreateDialog = true },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
@@ -132,6 +151,36 @@ fun PlaylistsScreen(
                         iconTint = MaterialTheme.colorScheme.primary,
                         onClick = { selectedPlaylist = PlaylistSelection.Favorites }
                     )
+                }
+
+                // Device Music Folders Section (Automatic Folder Playlists like "Personal Favorite")
+                if (folderPlaylists.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Music Folders (${folderPlaylists.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                        )
+                        Text(
+                            text = "Auto-organized by folder on your device",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    items(folderPlaylists, key = { "folder_${it.first}" }) { (folderName, songs) ->
+                        PlaylistCard(
+                            title = folderName,
+                            subtitle = "${songs.size} ${if (songs.size == 1) "track" else "tracks"}",
+                            icon = Icons.Default.Folder,
+                            iconTint = MaterialTheme.colorScheme.tertiary,
+                            onClick = { selectedPlaylist = PlaylistSelection.Folder(folderName, songs) }
+                        )
+                    }
                 }
 
                 // Custom Playlists Section
@@ -187,6 +236,23 @@ fun PlaylistsScreen(
             )
         }
 
+        is PlaylistSelection.Folder -> {
+            // Detailed Folder Playlist View (e.g. "Personal Favorite")
+            PlaylistDetailView(
+                title = selection.folderName,
+                subtitle = "${selection.songs.size} tracks • Folder playlist",
+                songs = selection.songs,
+                favoriteSongIds = favoriteSongIds,
+                currentPlayingSongId = currentPlayingSongId,
+                bottomPadding = bottomPadding,
+                onBack = { selectedPlaylist = PlaylistSelection.None },
+                onSongClick = { song -> onSongClick(song, selection.songs) },
+                onPlayAll = { onPlayPlaylist(selection.songs, false) },
+                onShuffleAll = { onPlayPlaylist(selection.songs, true) },
+                onToggleFavorite = onToggleFavorite
+            )
+        }
+
         is PlaylistSelection.Custom -> {
             // Detailed Custom Playlist View
             val playlist = customPlaylists.find { it.id == selection.playlist.id } ?: selection.playlist
@@ -210,44 +276,180 @@ fun PlaylistsScreen(
         }
     }
 
-    // New Playlist Modal Dialog
+    // Reworked "New Playlist" Modal Dialog
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = {
                 showCreateDialog = false
                 newPlaylistName = ""
             },
-            title = { Text("New Playlist") },
+            title = {
+                Text(
+                    text = "New Playlist",
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
-                Column {
-                    Text(
-                        text = "Give your playlist a name:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = newPlaylistName,
-                        onValueChange = { newPlaylistName = it },
-                        placeholder = { Text("e.g. Chill Beats, Car Mix...") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Mode Selector Chips
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
-                    )
+                    ) {
+                        FilterChip(
+                            selected = (createMode == 0),
+                            onClick = { createMode = 0 },
+                            label = { Text("From Folder") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                        FilterChip(
+                            selected = (createMode == 1),
+                            onClick = { createMode = 1 },
+                            label = { Text("Custom Name") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (createMode == 0) {
+                        // Option 1: Import directly from an existing device folder (e.g. "Personal Favorite")
+                        Text(
+                            text = "Select a folder to import as a custom playlist:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (folderPlaylists.isEmpty()) {
+                            Text(
+                                text = "No device folders found.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                folderPlaylists.forEach { (folderName, songs) ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                onCreatePlaylist(folderName, songs.map { it.id })
+                                                showCreateDialog = false
+                                            },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Folder,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column {
+                                                    Text(
+                                                        text = folderName,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = "${songs.size} tracks",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    onCreatePlaylist(folderName, songs.map { it.id })
+                                                    showCreateDialog = false
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Text("Import", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Option 2: Enter custom playlist name
+                        Text(
+                            text = "Give your playlist a custom name:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = newPlaylistName,
+                            onValueChange = { newPlaylistName = it },
+                            placeholder = { Text("e.g. Chill Beats, Car Mix...") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (newPlaylistName.isNotBlank()) {
-                            onCreatePlaylist(newPlaylistName.trim())
-                            newPlaylistName = ""
-                            showCreateDialog = false
-                        }
-                    },
-                    enabled = newPlaylistName.isNotBlank()
-                ) {
-                    Text("Create")
+                if (createMode == 1) {
+                    Button(
+                        onClick = {
+                            if (newPlaylistName.isNotBlank()) {
+                                onCreatePlaylist(newPlaylistName.trim(), emptyList())
+                                newPlaylistName = ""
+                                showCreateDialog = false
+                            }
+                        },
+                        enabled = newPlaylistName.isNotBlank()
+                    ) {
+                        Text("Create")
+                    }
                 }
             },
             dismissButton = {
@@ -428,7 +630,7 @@ private fun PlaylistDetailView(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "This playlist is empty.\nFavorite tracks to see them here!",
+                    text = "This playlist is empty.\nAdd tracks to see them here!",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

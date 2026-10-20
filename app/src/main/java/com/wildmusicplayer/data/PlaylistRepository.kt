@@ -113,8 +113,8 @@ class PlaylistRepository(context: Context) {
         prefs.edit().putString(KEY_RECENTLY_PLAYED, jsonArray.toString()).apply()
     }
 
-    fun createPlaylist(name: String): Playlist {
-        val newPlaylist = Playlist(name = name)
+    fun createPlaylist(name: String, songIds: List<Long> = emptyList()): Playlist {
+        val newPlaylist = Playlist(name = name, songIds = songIds)
         val updated = _customPlaylists.value + newPlaylist
         _customPlaylists.value = updated
         savePlaylists(updated)
