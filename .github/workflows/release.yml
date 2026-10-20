@@ -29,18 +29,19 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Setup Release Keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > wild_music_player.jks
-          cat <<EOF > keystore.properties
-          storeFile=../wild_music_player.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=wildmusic
-          keyPassword=$KEYSTORE_PASSWORD
-          EOF
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > wild_music_player.jks
+            cat <<EOF > keystore.properties
+            storeFile=../wild_music_player.jks
+            storePassword=$KEYSTORE_PASSWORD
+            keyAlias=wildmusic
+            keyPassword=$KEYSTORE_PASSWORD
+            EOF
+          fi
 
       - name: Build APK
         run: |
