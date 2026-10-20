@@ -53,6 +53,7 @@ fun SettingsDialog(
     onThemeSelected: (ThemeMode) -> Unit,
     keepScreenOn: Boolean,
     onKeepScreenOnToggled: (Boolean) -> Unit,
+    onShowWhatsNew: () -> Unit = {},
     onExitApp: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -186,13 +187,30 @@ fun SettingsDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "Installed: v${BuildConfig.VERSION_NAME}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Installed: v${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            onShowWhatsNew()
+                        }
+                    ) {
+                        Text(
+                            text = "Update Log",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 

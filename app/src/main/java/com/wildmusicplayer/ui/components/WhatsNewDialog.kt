@@ -104,6 +104,11 @@ fun WhatsNewDialog(
                         title = "Instant Search with Filters",
                         desc = "Quickly search by Title, Artist, or Album with category filter chips."
                     )
+                    ChangelogItem(
+                        emoji = "✨",
+                        title = "Smooth Startup & Update Flow",
+                        desc = "Update log pops up seamlessly after the branded splash screen finishes loading."
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))

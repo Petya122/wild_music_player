@@ -196,9 +196,7 @@ fun MusicPlayerApp(
     LaunchedEffect(Unit) {
         val lastSeenVersion = prefs.getString(KEY_LAST_SEEN_VERSION, null)
         val currentVersion = BuildConfig.VERSION_NAME
-        if (lastSeenVersion != null && lastSeenVersion != currentVersion) {
-            showWhatsNewDialog = true
-        }
+        val isNewVersion = lastSeenVersion != null && lastSeenVersion != currentVersion
         prefs.edit().putString(KEY_LAST_SEEN_VERSION, currentVersion).apply()
 
         val granted = ContextCompat.checkSelfPermission(
@@ -215,6 +213,12 @@ fun MusicPlayerApp(
         // Keep branded splash screen visible for a minimum of 1.8 seconds
         delay(1800)
         isSplashVisible = false
+
+        // Wait for splash screen fade-out animation to complete before popping up the update log dialog
+        if (isNewVersion) {
+            delay(600)
+            showWhatsNewDialog = true
+        }
     }
 
     val playlistRepository = remember { PlaylistRepository(context) }
@@ -435,6 +439,9 @@ fun MusicPlayerApp(
                 onKeepScreenOnToggled = { enabled ->
                     keepScreenOn = enabled
                     prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
+                },
+                onShowWhatsNew = {
+                    showWhatsNewDialog = true
                 },
                 onExitApp = {
                     showSettingsDialog = false
