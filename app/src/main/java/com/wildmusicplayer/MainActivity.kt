@@ -1,6 +1,7 @@
 package com.wildmusicplayer
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -9,18 +10,18 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,14 +30,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,10 +63,15 @@ import androidx.core.content.ContextCompat
 import com.wildmusicplayer.data.AudioRepository
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
-import com.wildmusicplayer.ui.components.NowPlayingScreen
+import com.wildmusicplayer.ui.components.DraggablePlayerSheet
+import com.wildmusicplayer.ui.components.SettingsDialog
 import com.wildmusicplayer.ui.components.SongThumbnail
+import com.wildmusicplayer.ui.theme.ThemeMode
 import com.wildmusicplayer.ui.theme.WildMusicPlayerTheme
 import kotlinx.coroutines.launch
+
+private const val PREFS_NAME = "wild_music_player_prefs"
+private const val KEY_THEME_MODE = "theme_mode"
 
 class MainActivity : ComponentActivity() {
 
@@ -80,13 +81,33 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         controllerManager = MusicControllerManager(applicationContext)
 
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val initialTheme = try {
+            ThemeMode.valueOf(prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name)
+        } catch (_: Exception) {
+            ThemeMode.SYSTEM
+        }
+
         setContent {
-            WildMusicPlayerTheme {
+            var currentTheme by remember { mutableStateOf(initialTheme) }
+
+            WildMusicPlayerTheme(themeMode = currentTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MusicPlayerApp(controllerManager = controllerManager)
+                    MusicPlayerApp(
+                        controllerManager = controllerManager,
+                        currentTheme = currentTheme,
+                        onThemeChanged = { newTheme ->
+                            currentTheme = newTheme
+                            prefs.edit().putString(KEY_THEME_MODE, newTheme.name).apply()
+                        },
+                        onExitApp = {
+                            controllerManager.stopAndShutdown()
+                            finishAffinity()
+                        }
+                    )
                 }
             }
         }
@@ -100,7 +121,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MusicPlayerApp(controllerManager: MusicControllerManager) {
+fun MusicPlayerApp(
+    controllerManager: MusicControllerManager,
+    currentTheme: ThemeMode,
+    onThemeChanged: (ThemeMode) -> Unit,
+    onExitApp: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val audioRepository = remember { AudioRepository(context) }
@@ -108,7 +134,8 @@ fun MusicPlayerApp(controllerManager: MusicControllerManager) {
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var hasPermission by remember { mutableStateOf(false) }
-    var isNowPlayingExpanded by remember { mutableStateOf(false) }
+    var isPlayerExpanded by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
     val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -156,9 +183,9 @@ fun MusicPlayerApp(controllerManager: MusicControllerManager) {
         }
     }
 
-    // Collapse NowPlaying screen on hardware back press
-    BackHandler(enabled = isNowPlayingExpanded) {
-        isNowPlayingExpanded = false
+    // Collapse player on back press if expanded
+    BackHandler(enabled = isPlayerExpanded) {
+        isPlayerExpanded = false
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -171,23 +198,20 @@ fun MusicPlayerApp(controllerManager: MusicControllerManager) {
                             fontWeight = FontWeight.Bold
                         )
                     },
+                    actions = {
+                        IconButton(onClick = { showSettingsDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
                 )
-            },
-            bottomBar = {
-                if (currentSong != null) {
-                    MiniPlayerBar(
-                        song = currentSong!!,
-                        isPlaying = isPlaying,
-                        onExpand = { isNowPlayingExpanded = true },
-                        onTogglePlay = { controllerManager.togglePlayPause() },
-                        onSkipNext = { controllerManager.skipToNext() },
-                        onSkipPrev = { controllerManager.skipToPrevious() }
-                    )
-                }
             }
         ) { paddingValues ->
             Box(
@@ -259,9 +283,11 @@ fun MusicPlayerApp(controllerManager: MusicControllerManager) {
                                 )
                             }
                         } else {
+                            val bottomNavPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                             SongListView(
                                 songs = filteredSongs,
                                 currentPlayingSongId = currentSong?.id,
+                                bottomPadding = if (currentSong != null) 90.dp + bottomNavPadding else bottomNavPadding,
                                 onSongClick = { selectedSong ->
                                     controllerManager.playSong(selectedSong, songs)
                                 }
@@ -272,29 +298,39 @@ fun MusicPlayerApp(controllerManager: MusicControllerManager) {
             }
         }
 
-        // Full Screen Animated Now Playing Modal
-        AnimatedVisibility(
-            visible = isNowPlayingExpanded && currentSong != null,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it })
-        ) {
-            currentSong?.let { song ->
-                NowPlayingScreen(
-                    song = song,
-                    isPlaying = isPlaying,
-                    currentPosition = currentPosition,
-                    duration = duration,
-                    isShuffleEnabled = isShuffleEnabled,
-                    repeatMode = repeatMode,
-                    onTogglePlay = { controllerManager.togglePlayPause() },
-                    onSkipNext = { controllerManager.skipToNext() },
-                    onSkipPrevious = { controllerManager.skipToPrevious() },
-                    onSeekTo = { controllerManager.seekTo(it) },
-                    onToggleShuffle = { controllerManager.toggleShuffle() },
-                    onToggleRepeat = { controllerManager.toggleRepeatMode() },
-                    onCollapse = { isNowPlayingExpanded = false }
-                )
-            }
+        // Interactive 1:1 Draggable Player Sheet (YouTube Music style)
+        if (currentSong != null) {
+            DraggablePlayerSheet(
+                song = currentSong!!,
+                isPlaying = isPlaying,
+                currentPosition = currentPosition,
+                duration = duration,
+                isShuffleEnabled = isShuffleEnabled,
+                repeatMode = repeatMode,
+                onTogglePlay = { controllerManager.togglePlayPause() },
+                onSkipNext = { controllerManager.skipToNext() },
+                onSkipPrevious = { controllerManager.skipToPrevious() },
+                onSeekTo = { controllerManager.seekTo(it) },
+                onToggleShuffle = { controllerManager.toggleShuffle() },
+                onToggleRepeat = { controllerManager.toggleRepeatMode() },
+                isExpanded = isPlayerExpanded,
+                onExpandedChange = { isPlayerExpanded = it }
+            )
+        }
+
+        // Settings Dialog Modal
+        if (showSettingsDialog) {
+            SettingsDialog(
+                currentTheme = currentTheme,
+                onThemeSelected = { newTheme ->
+                    onThemeChanged(newTheme)
+                },
+                onExitApp = {
+                    showSettingsDialog = false
+                    onExitApp()
+                },
+                onDismiss = { showSettingsDialog = false }
+            )
         }
     }
 }
@@ -303,6 +339,7 @@ fun MusicPlayerApp(controllerManager: MusicControllerManager) {
 fun SongListView(
     songs: List<Song>,
     currentPlayingSongId: Long?,
+    bottomPadding: androidx.compose.ui.unit.Dp,
     onSongClick: (Song) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -320,6 +357,9 @@ fun SongListView(
                 isCurrent = song.id == currentPlayingSongId,
                 onClick = { onSongClick(song) }
             )
+        }
+        item {
+            Spacer(modifier = Modifier.height(bottomPadding))
         }
     }
 }
@@ -372,87 +412,6 @@ fun SongListItem(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline
         )
-    }
-}
-
-@Composable
-fun MiniPlayerBar(
-    song: Song,
-    isPlaying: Boolean,
-    onExpand: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onSkipNext: () -> Unit,
-    onSkipPrev: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .clickable(onClick = onExpand),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SongThumbnail(
-                albumArtUri = song.albumArtUri,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(10.dp))
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = song.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = song.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            IconButton(onClick = onSkipPrev) {
-                Icon(
-                    imageVector = Icons.Default.SkipPrevious,
-                    contentDescription = "Previous Track",
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            IconButton(onClick = onTogglePlay) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(28.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            IconButton(onClick = onSkipNext) {
-                Icon(
-                    imageVector = Icons.Default.SkipNext,
-                    contentDescription = "Next Track",
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
     }
 }
 

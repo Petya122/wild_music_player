@@ -181,6 +181,21 @@ class MusicControllerManager(private val context: Context) {
         _isConnected.value = false
     }
 
+    fun stopAndShutdown() {
+        stopProgressUpdates()
+        mediaController?.stop()
+        mediaController?.clearMediaItems()
+        mediaController?.release()
+        mediaController = null
+        _isConnected.value = false
+        _currentSong.value = null
+        _isPlaying.value = false
+
+        val serviceIntent = android.content.Intent(context, PlaybackService::class.java)
+        context.stopService(serviceIntent)
+    }
+
+
     private inner class PlayerListener : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _isPlaying.value = isPlaying
