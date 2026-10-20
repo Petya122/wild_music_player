@@ -59,6 +59,15 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Receiver for post-update notification and reopen -->
+        <receiver
+            android:name=".receiver.UpdateBroadcastReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

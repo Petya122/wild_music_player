@@ -157,7 +157,7 @@ class UpdateChecker(private val context: Context) {
         var act: android.content.Context? = context
         while (act is android.content.ContextWrapper) {
             if (act is android.app.Activity) {
-                act.finish()
+                act.finishAffinity()
                 break
             }
             act = act.baseContext

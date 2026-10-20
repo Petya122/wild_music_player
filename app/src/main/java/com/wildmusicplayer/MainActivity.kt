@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -60,18 +63,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.AudioRepository
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.ui.components.DraggablePlayerSheet
 import com.wildmusicplayer.ui.components.SettingsDialog
 import com.wildmusicplayer.ui.components.SongThumbnail
+import com.wildmusicplayer.ui.components.SplashScreen
+import com.wildmusicplayer.ui.components.WhatsNewDialog
 import com.wildmusicplayer.ui.theme.ThemeMode
 import com.wildmusicplayer.ui.theme.WildMusicPlayerTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val PREFS_NAME = "wild_music_player_prefs"
 private const val KEY_THEME_MODE = "theme_mode"
+private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
 
 class MainActivity : ComponentActivity() {
 
@@ -136,6 +144,10 @@ fun MusicPlayerApp(
     var hasPermission by remember { mutableStateOf(false) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var isSplashVisible by remember { mutableStateOf(true) }
+    var showWhatsNewDialog by remember { mutableStateOf(false) }
+
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -155,6 +167,13 @@ fun MusicPlayerApp(
     }
 
     LaunchedEffect(Unit) {
+        val lastSeenVersion = prefs.getString(KEY_LAST_SEEN_VERSION, null)
+        val currentVersion = BuildConfig.VERSION_NAME
+        if (lastSeenVersion != null && lastSeenVersion != currentVersion) {
+            showWhatsNewDialog = true
+        }
+        prefs.edit().putString(KEY_LAST_SEEN_VERSION, currentVersion).apply()
+
         val granted = ContextCompat.checkSelfPermission(
             context,
             requiredPermission
@@ -165,6 +184,10 @@ fun MusicPlayerApp(
         } else {
             permissionLauncher.launch(requiredPermission)
         }
+
+        // Keep branded splash screen visible for a minimum of 1.8 seconds
+        delay(1800)
+        isSplashVisible = false
     }
 
     val currentSong by controllerManager.currentSong.collectAsState()
@@ -331,6 +354,22 @@ fun MusicPlayerApp(
                 },
                 onDismiss = { showSettingsDialog = false }
             )
+        }
+
+        // What's New Dialog Modal after app updates
+        if (showWhatsNewDialog) {
+            WhatsNewDialog(
+                versionName = BuildConfig.VERSION_NAME,
+                onDismiss = { showWhatsNewDialog = false }
+            )
+        }
+
+        // Full-screen Animated Splash Screen with smooth fade-out
+        AnimatedVisibility(
+            visible = isSplashVisible,
+            exit = fadeOut(animationSpec = tween(600))
+        ) {
+            SplashScreen()
         }
     }
 }
