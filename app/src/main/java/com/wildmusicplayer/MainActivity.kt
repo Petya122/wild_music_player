@@ -41,6 +41,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -67,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.AudioRepository
+import com.wildmusicplayer.data.PlaylistRepository
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.ui.components.DraggablePlayerSheet
@@ -74,6 +78,11 @@ import com.wildmusicplayer.ui.components.SettingsDialog
 import com.wildmusicplayer.ui.components.SongThumbnail
 import com.wildmusicplayer.ui.components.SplashScreen
 import com.wildmusicplayer.ui.components.WhatsNewDialog
+import com.wildmusicplayer.ui.screens.HomeScreen
+import com.wildmusicplayer.ui.screens.NavigationTab
+import com.wildmusicplayer.ui.screens.PlaylistsScreen
+import com.wildmusicplayer.ui.screens.SearchScreen
+import com.wildmusicplayer.ui.screens.SongsScreen
 import com.wildmusicplayer.ui.theme.ThemeMode
 import com.wildmusicplayer.ui.theme.WildMusicPlayerTheme
 import kotlinx.coroutines.delay
@@ -208,6 +217,41 @@ fun MusicPlayerApp(
         isSplashVisible = false
     }
 
+    val playlistRepository = remember { PlaylistRepository(context) }
+    val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
+    val recentlyPlayedIds by playlistRepository.recentlyPlayedIds.collectAsState()
+    val customPlaylists by playlistRepository.customPlaylists.collectAsState()
+
+    var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
+
+    val recentlyPlayedSongs = remember(songs, recentlyPlayedIds) {
+        recentlyPlayedIds.mapNotNull { id -> songs.find { it.id == id } }
+    }
+    val favoriteSongs = remember(songs, favoriteSongIds) {
+        songs.filter { favoriteSongIds.contains(it.id) }
+    }
+
+    val playSong: (Song, List<Song>) -> Unit = { song, playlist ->
+        playlistRepository.addRecentlyPlayed(song.id)
+        controllerManager.playSong(song, playlist)
+    }
+
+    val shuffleAll: () -> Unit = {
+        if (songs.isNotEmpty()) {
+            val shuffled = songs.shuffled()
+            playlistRepository.addRecentlyPlayed(shuffled.first().id)
+            controllerManager.playSong(shuffled.first(), shuffled)
+        }
+    }
+
+    val playPlaylist: (List<Song>, Boolean) -> Unit = { list, shuffle ->
+        if (list.isNotEmpty()) {
+            val targetList = if (shuffle) list.shuffled() else list
+            playlistRepository.addRecentlyPlayed(targetList.first().id)
+            controllerManager.playSong(targetList.first(), targetList)
+        }
+    }
+
     val currentSong by controllerManager.currentSong.collectAsState()
     val isPlaying by controllerManager.isPlaying.collectAsState()
     val currentPosition by controllerManager.currentPosition.collectAsState()
@@ -215,18 +259,13 @@ fun MusicPlayerApp(
     val isShuffleEnabled by controllerManager.isShuffleEnabled.collectAsState()
     val repeatMode by controllerManager.repeatMode.collectAsState()
 
-    val filteredSongs = remember(songs, searchQuery) {
-        if (searchQuery.isBlank()) songs
-        else songs.filter {
-            it.title.contains(searchQuery, ignoreCase = true) ||
-            it.artist.contains(searchQuery, ignoreCase = true) ||
-            it.album.contains(searchQuery, ignoreCase = true)
+    // Collapse player on back press if expanded, or return to Home tab
+    BackHandler(enabled = isPlayerExpanded || currentTab != NavigationTab.HOME) {
+        if (isPlayerExpanded) {
+            isPlayerExpanded = false
+        } else if (currentTab != NavigationTab.HOME) {
+            currentTab = NavigationTab.HOME
         }
-    }
-
-    // Collapse player on back press if expanded
-    BackHandler(enabled = isPlayerExpanded) {
-        isPlayerExpanded = false
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -235,7 +274,12 @@ fun MusicPlayerApp(
                 TopAppBar(
                     title = {
                         Text(
-                            text = "Wild Music Player",
+                            text = when (currentTab) {
+                                NavigationTab.HOME -> "Wild Music Player"
+                                NavigationTab.SONGS -> "Songs"
+                                NavigationTab.SEARCH -> "Search"
+                                NavigationTab.PLAYLISTS -> "Playlists"
+                            },
                             fontWeight = FontWeight.Bold
                         )
                     },
@@ -253,6 +297,38 @@ fun MusicPlayerApp(
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
                 )
+            },
+            bottomBar = {
+                if (hasPermission) {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        tonalElevation = 8.dp
+                    ) {
+                        NavigationTab.entries.forEach { tab ->
+                            NavigationBarItem(
+                                selected = (currentTab == tab),
+                                onClick = { currentTab = tab },
+                                icon = {
+                                    Icon(
+                                        imageVector = tab.icon,
+                                        contentDescription = tab.title
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = tab.title,
+                                        fontWeight = if (currentTab == tab) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                )
+                            )
+                        }
+                    }
+                }
             }
         ) { paddingValues ->
             Box(
@@ -265,73 +341,55 @@ fun MusicPlayerApp(
                         permissionLauncher.launch(requiredPermission)
                     })
                 } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // Search Bar
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search songs, artists, albums...") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "Search",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = "" }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Clear Search"
-                                        )
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        )
+                    val contentBottomPadding = if (currentSong != null) 86.dp else 16.dp
 
-                        if (songs.isEmpty()) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "No songs found on device storage.\nTransfer some MP3s to get started!",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else if (filteredSongs.isEmpty()) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "No songs match \"$searchQuery\"",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else {
-                            val bottomNavPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                            SongListView(
-                                songs = filteredSongs,
+                    when (currentTab) {
+                        NavigationTab.HOME -> {
+                            HomeScreen(
+                                allSongs = songs,
+                                recentlyPlayedSongs = recentlyPlayedSongs,
+                                favoriteSongs = favoriteSongs,
                                 currentPlayingSongId = currentSong?.id,
-                                bottomPadding = if (currentSong != null) 90.dp + bottomNavPadding else bottomNavPadding,
-                                onSongClick = { selectedSong ->
-                                    controllerManager.playSong(selectedSong, songs)
-                                }
+                                bottomPadding = contentBottomPadding,
+                                onSongClick = playSong,
+                                onShuffleAll = shuffleAll,
+                                onNavigateToSongs = { currentTab = NavigationTab.SONGS },
+                                onNavigateToPlaylists = { currentTab = NavigationTab.PLAYLISTS }
+                            )
+                        }
+                        NavigationTab.SONGS -> {
+                            SongsScreen(
+                                songs = songs,
+                                favoriteSongIds = favoriteSongIds,
+                                currentPlayingSongId = currentSong?.id,
+                                bottomPadding = contentBottomPadding,
+                                onSongClick = { selectedSong -> playSong(selectedSong, songs) },
+                                onShuffleAll = shuffleAll,
+                                onToggleFavorite = { playlistRepository.toggleFavorite(it) }
+                            )
+                        }
+                        NavigationTab.SEARCH -> {
+                            SearchScreen(
+                                songs = songs,
+                                favoriteSongIds = favoriteSongIds,
+                                currentPlayingSongId = currentSong?.id,
+                                bottomPadding = contentBottomPadding,
+                                onSongClick = playSong,
+                                onToggleFavorite = { playlistRepository.toggleFavorite(it) }
+                            )
+                        }
+                        NavigationTab.PLAYLISTS -> {
+                            PlaylistsScreen(
+                                allSongs = songs,
+                                favoriteSongIds = favoriteSongIds,
+                                customPlaylists = customPlaylists,
+                                currentPlayingSongId = currentSong?.id,
+                                bottomPadding = contentBottomPadding,
+                                onSongClick = playSong,
+                                onPlayPlaylist = playPlaylist,
+                                onToggleFavorite = { playlistRepository.toggleFavorite(it) },
+                                onCreatePlaylist = { playlistRepository.createPlaylist(it) },
+                                onDeletePlaylist = { playlistRepository.deletePlaylist(it) }
                             )
                         }
                     }
@@ -348,6 +406,7 @@ fun MusicPlayerApp(
                 duration = duration,
                 isShuffleEnabled = isShuffleEnabled,
                 repeatMode = repeatMode,
+                isFavorite = favoriteSongIds.contains(currentSong!!.id),
                 onTogglePlay = { controllerManager.togglePlayPause() },
                 onSkipNext = { controllerManager.skipToNext() },
                 onSkipPrevious = { controllerManager.skipToPrevious() },
@@ -358,6 +417,8 @@ fun MusicPlayerApp(
                     isPlayerExpanded = false
                     controllerManager.stopPlayback()
                 },
+                onToggleFavorite = { playlistRepository.toggleFavorite(it) },
+                bottomBarHeight = 80.dp,
                 isExpanded = isPlayerExpanded,
                 onExpandedChange = { isPlayerExpanded = it }
             )
@@ -402,86 +463,6 @@ fun MusicPlayerApp(
 }
 
 @Composable
-fun SongListView(
-    songs: List<Song>,
-    currentPlayingSongId: Long?,
-    bottomPadding: androidx.compose.ui.unit.Dp,
-    onSongClick: (Song) -> Unit
-) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item {
-            Text(
-                text = "${songs.size} tracks available",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-        }
-        items(songs, key = { it.id }) { song ->
-            SongListItem(
-                song = song,
-                isCurrent = song.id == currentPlayingSongId,
-                onClick = { onSongClick(song) }
-            )
-        }
-        item {
-            Spacer(modifier = Modifier.height(bottomPadding))
-        }
-    }
-}
-
-@Composable
-fun SongListItem(
-    song: Song,
-    isCurrent: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SongThumbnail(
-            albumArtUri = song.albumArtUri,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "${song.artist} • ${song.album}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Text(
-            text = formatDuration(song.duration),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.outline
-        )
-    }
-}
-
-@Composable
 fun PermissionRequestView(onRequestPermission: () -> Unit) {
     Column(
         modifier = Modifier
@@ -507,11 +488,4 @@ fun PermissionRequestView(onRequestPermission: () -> Unit) {
             Text(text = "Grant Permission")
         }
     }
-}
-
-private fun formatDuration(durationMs: Long): String {
-    val totalSeconds = durationMs / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format("%d:%02d", minutes, seconds)
 }

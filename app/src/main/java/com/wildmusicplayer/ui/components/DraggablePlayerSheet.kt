@@ -55,13 +55,16 @@ fun DraggablePlayerSheet(
     onStop: () -> Unit,
     isExpanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
+    bottomBarHeight: androidx.compose.ui.unit.Dp = 80.dp,
+    isFavorite: Boolean = false,
+    onToggleFavorite: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
     val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val peekHeightDp = 72.dp + navBarBottomPadding
+    val peekHeightDp = 72.dp + bottomBarHeight + navBarBottomPadding
     val peekHeightPx = with(density) { peekHeightDp.toPx() }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -208,7 +211,9 @@ fun DraggablePlayerSheet(
                                 )
                             }
                         },
-                        onStop = onStop
+                        onStop = onStop,
+                        isFavorite = isFavorite,
+                        onToggleFavorite = onToggleFavorite
                     )
                 }
             }
@@ -238,8 +243,7 @@ fun DraggablePlayerSheet(
                         onTogglePlay = onTogglePlay,
                         onSkipNext = onSkipNext,
                         onSkipPrev = onSkipPrevious,
-                        onStop = onStop,
-                        modifier = Modifier.navigationBarsPadding()
+                        onStop = onStop
                     )
                 }
             }

@@ -85,19 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🚀",
-                        title = "Silky-Smooth Scrolling",
-                        desc = "Zero lag when scrolling through 200+ songs with instant cached thumbnail loading."
+                        emoji = "🧭",
+                        title = "4-Tab Bottom Navigation",
+                        desc = "Brand-new Home, Songs, Search, and Playlists tabs with stacked miniplayer."
                     )
                     ChangelogItem(
-                        emoji = "👆",
-                        title = "Overhauled Swipe Gestures",
-                        desc = "Swipe up on the miniplayer to immediately open; swipe down on the full player to close."
+                        emoji = "⚡",
+                        title = "Home Quick Play & Recents",
+                        desc = "1-tap 'Shuffle All' music and horizontal carousel of your recently played songs."
                     )
                     ChangelogItem(
-                        emoji = "📱",
-                        title = "Refined Mobile Layout",
-                        desc = "Compact button spacing and optimized navigation padding tailored for phones."
+                        emoji = "❤️",
+                        title = "Favorites & Custom Playlists",
+                        desc = "Heart tracks anywhere to build your Favorites and create custom local playlists."
+                    )
+                    ChangelogItem(
+                        emoji = "🔍",
+                        title = "Instant Search with Filters",
+                        desc = "Quickly search by Title, Artist, or Album with category filter chips."
                     )
                 }
 
