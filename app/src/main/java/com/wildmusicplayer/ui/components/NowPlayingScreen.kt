@@ -87,10 +87,21 @@ fun NowPlayingScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(horizontal = 24.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            // Modern Drag Handle Pill Indicator
+            Box(
+                modifier = Modifier
+                    .padding(top = 2.dp, bottom = 4.dp)
+                    .size(width = 40.dp, height = 4.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(2.dp)
+                    )
+            )
+
             // Header Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),

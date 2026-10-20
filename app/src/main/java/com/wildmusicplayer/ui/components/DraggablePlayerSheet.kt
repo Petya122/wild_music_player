@@ -15,8 +15,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -86,9 +89,14 @@ fun DraggablePlayerSheet(
             (1f - (offsetY.value / maxOffset)).coerceIn(0f, 1f)
         } else 0f
 
+        var dragStartOffsetY by remember { mutableFloatStateOf(0f) }
+
         val dragModifier = Modifier.pointerInput(maxOffset) {
             detectVerticalDragGestures(
-                onDragStart = { velocityTracker.resetTracking() },
+                onDragStart = {
+                    velocityTracker.resetTracking()
+                    dragStartOffsetY = offsetY.value
+                },
                 onVerticalDrag = { change, dragAmount ->
                     change.consume()
                     velocityTracker.addPosition(change.uptimeMillis, change.position)
@@ -100,10 +108,25 @@ fun DraggablePlayerSheet(
                 onDragEnd = {
                     val velocity = velocityTracker.calculateVelocity().y
                     scope.launch {
+                        val deltaY = offsetY.value - dragStartOffsetY
+                        val isStartedFromCollapsed = dragStartOffsetY > maxOffset * 0.6f
+                        val isStartedFromExpanded = dragStartOffsetY < maxOffset * 0.4f
+                        val thresholdPx = with(density) { 36.dp.toPx() }
+
                         val target = when {
-                            velocity > 1200f -> maxOffset      // Fast swipe down -> collapse
-                            velocity < -1200f -> 0f            // Fast swipe up -> expand
-                            offsetY.value > maxOffset * 0.45f -> maxOffset
+                            // Responsive flick gestures (up or down)
+                            velocity < -350f -> 0f              // Flick up -> expand
+                            velocity > 350f -> maxOffset        // Flick down -> collapse
+                            // Started from miniplayer: any clear upward drag expands
+                            isStartedFromCollapsed -> {
+                                if (deltaY < -thresholdPx) 0f else maxOffset
+                            }
+                            // Started from full player: any clear downward drag collapses
+                            isStartedFromExpanded -> {
+                                if (deltaY > thresholdPx) maxOffset else 0f
+                            }
+                            // Mid-screen fallback
+                            offsetY.value > maxOffset * 0.5f -> maxOffset
                             else -> 0f
                         }
                         val willBeExpanded = (target == 0f)
