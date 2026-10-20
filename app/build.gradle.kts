@@ -37,6 +37,10 @@ android {
     }
 }
 
+base {
+    archivesName.set("wild_music_player-v${android.defaultConfig.versionName}")
+}
+
 
 kotlin {
     jvmToolchain(17)

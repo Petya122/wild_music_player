@@ -33,7 +33,7 @@ jobs:
 
       - name: Rename APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk wild_music_player-${{ github.ref_name }}.apk
+          cp app/build/outputs/apk/debug/*.apk wild_music_player-${{ github.ref_name }}.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
