@@ -28,27 +28,22 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x ./gradlew
 
-      - name: Setup Release Keystore
+      - name: Build Release APK
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > wild_music_player.jks
-            cat <<EOF > keystore.properties
-            storeFile=../wild_music_player.jks
-            storePassword=$KEYSTORE_PASSWORD
-            keyAlias=wildmusic
-            keyPassword=$KEYSTORE_PASSWORD
-            EOF
-          fi
-
-      - name: Build APK
-        run: |
-          if [ -f "wild_music_player.jks" ]; then
+            echo "Release keystore secret detected. Decoding keystore..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > wild_music_player.jks
+            echo "storeFile=../wild_music_player.jks" > keystore.properties
+            echo "storePassword=$KEYSTORE_PASSWORD" >> keystore.properties
+            echo "keyAlias=wildmusic" >> keystore.properties
+            echo "keyPassword=$KEYSTORE_PASSWORD" >> keystore.properties
             ./gradlew assembleRelease -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
             cp app/build/outputs/apk/release/*.apk wild_music_player-${{ github.ref_name }}.apk
           else
+            echo "No keystore secret provided. Building debug APK..."
             ./gradlew assembleDebug -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
             cp app/build/outputs/apk/debug/*.apk wild_music_player-${{ github.ref_name }}.apk
           fi
