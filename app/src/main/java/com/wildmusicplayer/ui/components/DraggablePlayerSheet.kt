@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -91,50 +92,80 @@ fun DraggablePlayerSheet(
         } else 0f
 
         var dragStartOffsetY by remember { mutableFloatStateOf(0f) }
+        var accumulatedDragY by remember { mutableFloatStateOf(0f) }
+        var hasCommittedGesture by remember { mutableStateOf(false) }
 
-        val dragModifier = Modifier.pointerInput(maxOffset) {
+        val dragModifier = Modifier.pointerInput(maxOffset, isExpanded) {
             detectVerticalDragGestures(
                 onDragStart = {
                     velocityTracker.resetTracking()
                     dragStartOffsetY = offsetY.value
+                    accumulatedDragY = 0f
+                    hasCommittedGesture = false
                 },
                 onVerticalDrag = { change, dragAmount ->
                     change.consume()
                     velocityTracker.addPosition(change.uptimeMillis, change.position)
-                    scope.launch {
-                        val newOffset = (offsetY.value + dragAmount).coerceIn(0f, maxOffset)
-                        offsetY.snapTo(newOffset)
+                    accumulatedDragY += dragAmount
+
+                    val triggerThresholdPx = with(density) { 10.dp.toPx() }
+
+                    if (!hasCommittedGesture) {
+                        if (!isExpanded && accumulatedDragY < -triggerThresholdPx) {
+                            // Instant detection: swiped up on miniplayer -> bring up full player
+                            hasCommittedGesture = true
+                            onExpandedChange(true)
+                            scope.launch {
+                                offsetY.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = 800f
+                                    )
+                                )
+                            }
+                        } else if (isExpanded && accumulatedDragY > triggerThresholdPx) {
+                            // Instant detection: swiped down on full player -> collapse to miniplayer
+                            hasCommittedGesture = true
+                            onExpandedChange(false)
+                            scope.launch {
+                                offsetY.animateTo(
+                                    targetValue = maxOffset,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = 800f
+                                    )
+                                )
+                            }
+                        } else {
+                            // Follow finger slightly before threshold is reached
+                            scope.launch {
+                                val newOffset = (offsetY.value + dragAmount).coerceIn(0f, maxOffset)
+                                offsetY.snapTo(newOffset)
+                            }
+                        }
                     }
                 },
                 onDragEnd = {
-                    val velocity = velocityTracker.calculateVelocity().y
-                    scope.launch {
-                        val deltaY = offsetY.value - dragStartOffsetY
-                        val isStartedFromCollapsed = dragStartOffsetY > maxOffset * 0.5f
-                        val thresholdPx = with(density) { 2.dp.toPx() }
-
-                        val target = when {
-                            // Instant hair-trigger flick gestures (lightest thumb flick in either direction)
-                            velocity < -30f -> 0f              // Flick up -> expand
-                            velocity > 30f -> maxOffset        // Flick down -> collapse
-                            // Started from miniplayer: any micro upward movement expands immediately
-                            isStartedFromCollapsed -> {
-                                if (deltaY < -thresholdPx || offsetY.value < maxOffset - 4f) 0f else maxOffset
+                    if (!hasCommittedGesture) {
+                        val velocity = velocityTracker.calculateVelocity().y
+                        scope.launch {
+                            val target = when {
+                                !isExpanded && (velocity < -30f || accumulatedDragY < 0f) -> 0f
+                                isExpanded && (velocity > 30f || accumulatedDragY > 0f) -> maxOffset
+                                isExpanded -> 0f
+                                else -> maxOffset
                             }
-                            // Started from full player: any micro downward movement collapses immediately
-                            else -> {
-                                if (deltaY > thresholdPx || offsetY.value > 4f) maxOffset else 0f
-                            }
-                        }
-                        val willBeExpanded = (target == 0f)
-                        onExpandedChange(willBeExpanded)
-                        offsetY.animateTo(
-                            targetValue = target,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = 1000f
+                            val willBeExpanded = (target == 0f)
+                            onExpandedChange(willBeExpanded)
+                            offsetY.animateTo(
+                                targetValue = target,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = 800f
+                                )
                             )
-                        )
+                        }
                     }
                 }
             )

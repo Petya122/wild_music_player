@@ -85,32 +85,44 @@ fun MiniPlayerBar(
                 )
             }
 
-            IconButton(onClick = onSkipPrev) {
+            IconButton(
+                onClick = onSkipPrev,
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Default.SkipPrevious,
                     contentDescription = "Previous Track",
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
-            IconButton(onClick = onTogglePlay) {
+            IconButton(
+                onClick = onTogglePlay,
+                modifier = Modifier.size(40.dp)
+            ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(26.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
 
-            IconButton(onClick = onSkipNext) {
+            IconButton(
+                onClick = onSkipNext,
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Default.SkipNext,
                     contentDescription = "Next Track",
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
-            IconButton(onClick = onStop) {
+            IconButton(
+                onClick = onStop,
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Stop and dismiss player",

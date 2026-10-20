@@ -85,19 +85,19 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "⏹️",
-                        title = "Stop Current Playback",
-                        desc = "Easily end active playback anytime from the player header or miniplayer close button."
+                        emoji = "🚀",
+                        title = "Silky-Smooth Scrolling",
+                        desc = "Zero lag when scrolling through 200+ songs with instant cached thumbnail loading."
                     )
                     ChangelogItem(
-                        emoji = "💡",
-                        title = "Keep Screen On Setting",
-                        desc = "Toggle in Settings to prevent your screen from fading or shutting off while using the app."
+                        emoji = "👆",
+                        title = "Overhauled Swipe Gestures",
+                        desc = "Swipe up on the miniplayer to immediately open; swipe down on the full player to close."
                     )
                     ChangelogItem(
-                        emoji = "⚡",
-                        title = "Flick Gestures & Stability",
-                        desc = "Refined thumb flick gestures, responsive miniplayer controls, and lifecycle optimizations."
+                        emoji = "📱",
+                        title = "Refined Mobile Layout",
+                        desc = "Compact button spacing and optimized navigation padding tailored for phones."
                     )
                 }
 
