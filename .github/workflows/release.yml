@@ -28,12 +28,29 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x ./gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
-
-      - name: Rename APK
+      - name: Setup Release Keystore
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          cp app/build/outputs/apk/debug/*.apk wild_music_player-${{ github.ref_name }}.apk
+          echo "$KEYSTORE_BASE64" | base64 -d > wild_music_player.jks
+          cat <<EOF > keystore.properties
+          storeFile=../wild_music_player.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=wildmusic
+          keyPassword=$KEYSTORE_PASSWORD
+          EOF
+
+      - name: Build APK
+        run: |
+          if [ -f "wild_music_player.jks" ]; then
+            ./gradlew assembleRelease -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
+            cp app/build/outputs/apk/release/*.apk wild_music_player-${{ github.ref_name }}.apk
+          else
+            ./gradlew assembleDebug -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
+            cp app/build/outputs/apk/debug/*.apk wild_music_player-${{ github.ref_name }}.apk
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -43,3 +60,4 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+

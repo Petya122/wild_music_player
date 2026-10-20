@@ -154,6 +154,14 @@ class UpdateChecker(private val context: Context) {
         }
 
         context.startActivity(installIntent)
+        var act: android.content.Context? = context
+        while (act is android.content.ContextWrapper) {
+            if (act is android.app.Activity) {
+                act.finish()
+                break
+            }
+            act = act.baseContext
+        }
     }
 
     private fun isNewerVersion(remote: String, current: String): Boolean {
