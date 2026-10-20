@@ -33,7 +33,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -73,8 +75,8 @@ import com.wildmusicplayer.data.AudioRepository
 import com.wildmusicplayer.data.PlaylistRepository
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
+import com.wildmusicplayer.ui.components.AboutDialog
 import com.wildmusicplayer.ui.components.DraggablePlayerSheet
-import com.wildmusicplayer.ui.components.SettingsDialog
 import com.wildmusicplayer.ui.components.SongThumbnail
 import com.wildmusicplayer.ui.components.SplashScreen
 import com.wildmusicplayer.ui.components.WhatsNewDialog
@@ -82,6 +84,7 @@ import com.wildmusicplayer.ui.screens.HomeScreen
 import com.wildmusicplayer.ui.screens.NavigationTab
 import com.wildmusicplayer.ui.screens.PlaylistsScreen
 import com.wildmusicplayer.ui.screens.SearchScreen
+import com.wildmusicplayer.ui.screens.SettingsScreen
 import com.wildmusicplayer.ui.screens.SongsScreen
 import com.wildmusicplayer.ui.theme.ThemeMode
 import com.wildmusicplayer.ui.theme.WildMusicPlayerTheme
@@ -155,7 +158,8 @@ fun MusicPlayerApp(
     var searchQuery by remember { mutableStateOf("") }
     var hasPermission by remember { mutableStateOf(false) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
+    var isSettingsOpen by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
     var isSplashVisible by remember { mutableStateOf(true) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
 
@@ -263,10 +267,12 @@ fun MusicPlayerApp(
     val isShuffleEnabled by controllerManager.isShuffleEnabled.collectAsState()
     val repeatMode by controllerManager.repeatMode.collectAsState()
 
-    // Collapse player on back press if expanded, or return to Home tab
-    BackHandler(enabled = isPlayerExpanded || currentTab != NavigationTab.HOME) {
+    // Collapse player on back press if expanded, return from settings, or return to Home tab
+    BackHandler(enabled = isPlayerExpanded || isSettingsOpen || currentTab != NavigationTab.HOME) {
         if (isPlayerExpanded) {
             isPlayerExpanded = false
+        } else if (isSettingsOpen) {
+            isSettingsOpen = false
         } else if (currentTab != NavigationTab.HOME) {
             currentTab = NavigationTab.HOME
         }
@@ -278,22 +284,47 @@ fun MusicPlayerApp(
                 TopAppBar(
                     title = {
                         Text(
-                            text = when (currentTab) {
-                                NavigationTab.HOME -> "Wild Music Player"
-                                NavigationTab.SONGS -> "Songs"
-                                NavigationTab.SEARCH -> "Search"
-                                NavigationTab.PLAYLISTS -> "Playlists"
+                            text = if (isSettingsOpen) {
+                                "Settings"
+                            } else {
+                                when (currentTab) {
+                                    NavigationTab.HOME -> "Wild Music Player"
+                                    NavigationTab.SONGS -> "Songs"
+                                    NavigationTab.SEARCH -> "Search"
+                                    NavigationTab.PLAYLISTS -> "Playlists"
+                                }
                             },
                             fontWeight = FontWeight.Bold
                         )
                     },
+                    navigationIcon = {
+                        if (isSettingsOpen) {
+                            IconButton(onClick = { isSettingsOpen = false }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    },
                     actions = {
-                        IconButton(onClick = { showSettingsDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+                        if (isSettingsOpen) {
+                            IconButton(onClick = { showAboutDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = "About & Credits",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { isSettingsOpen = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -310,8 +341,11 @@ fun MusicPlayerApp(
                     ) {
                         NavigationTab.entries.forEach { tab ->
                             NavigationBarItem(
-                                selected = (currentTab == tab),
-                                onClick = { currentTab = tab },
+                                selected = (!isSettingsOpen && currentTab == tab),
+                                onClick = {
+                                    isSettingsOpen = false
+                                    currentTab = tab
+                                },
                                 icon = {
                                     Icon(
                                         imageVector = tab.icon,
@@ -321,7 +355,7 @@ fun MusicPlayerApp(
                                 label = {
                                     Text(
                                         text = tab.title,
-                                        fontWeight = if (currentTab == tab) FontWeight.Bold else FontWeight.Normal
+                                        fontWeight = if (!isSettingsOpen && currentTab == tab) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },
                                 colors = NavigationBarItemDefaults.colors(
@@ -347,7 +381,31 @@ fun MusicPlayerApp(
                 } else {
                     val contentBottomPadding = if (currentSong != null) 86.dp else 16.dp
 
-                    when (currentTab) {
+                    if (isSettingsOpen) {
+                        SettingsScreen(
+                            currentTheme = currentTheme,
+                            onThemeSelected = { newTheme ->
+                                onThemeChanged(newTheme)
+                            },
+                            keepScreenOn = keepScreenOn,
+                            onKeepScreenOnToggled = { enabled ->
+                                keepScreenOn = enabled
+                                prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
+                            },
+                            onShowWhatsNew = {
+                                showWhatsNewDialog = true
+                            },
+                            onShowAbout = {
+                                showAboutDialog = true
+                            },
+                            onExitApp = {
+                                isSettingsOpen = false
+                                onExitApp()
+                            },
+                            bottomPadding = contentBottomPadding
+                        )
+                    } else {
+                        when (currentTab) {
                         NavigationTab.HOME -> {
                             HomeScreen(
                                 allSongs = songs,
@@ -400,6 +458,7 @@ fun MusicPlayerApp(
                 }
             }
         }
+    }
 
         // Interactive 1:1 Draggable Player Sheet (YouTube Music style)
         if (currentSong != null) {
@@ -428,26 +487,10 @@ fun MusicPlayerApp(
             )
         }
 
-        // Settings Dialog Modal
-        if (showSettingsDialog) {
-            SettingsDialog(
-                currentTheme = currentTheme,
-                onThemeSelected = { newTheme ->
-                    onThemeChanged(newTheme)
-                },
-                keepScreenOn = keepScreenOn,
-                onKeepScreenOnToggled = { enabled ->
-                    keepScreenOn = enabled
-                    prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
-                },
-                onShowWhatsNew = {
-                    showWhatsNewDialog = true
-                },
-                onExitApp = {
-                    showSettingsDialog = false
-                    onExitApp()
-                },
-                onDismiss = { showSettingsDialog = false }
+        // About & Credits Dialog Modal
+        if (showAboutDialog) {
+            AboutDialog(
+                onDismiss = { showAboutDialog = false }
             )
         }
 

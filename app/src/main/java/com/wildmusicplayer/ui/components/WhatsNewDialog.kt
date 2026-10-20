@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
+                        emoji = "⚙️",
+                        title = "Dedicated Settings Screen",
+                        desc = "Full-page settings with grouped cards for Themes, Display, Updates, and app controls."
+                    )
+                    ChangelogItem(
+                        emoji = "ℹ️",
+                        title = "About & Credits",
+                        desc = "New About & Credits modal crediting Petya122 and open-source libraries."
+                    )
+                    ChangelogItem(
                         emoji = "🧭",
                         title = "4-Tab Bottom Navigation",
-                        desc = "Brand-new Home, Songs, Search, and Playlists tabs with stacked miniplayer."
+                        desc = "Clean Home, Songs, Search, and Playlists tabs with stacked miniplayer."
                     )
                     ChangelogItem(
                         emoji = "⚡",
                         title = "Home Quick Play & Recents",
                         desc = "1-tap 'Shuffle All' music and horizontal carousel of your recently played songs."
-                    )
-                    ChangelogItem(
-                        emoji = "❤️",
-                        title = "Favorites & Custom Playlists",
-                        desc = "Heart tracks anywhere to build your Favorites and create custom local playlists."
-                    )
-                    ChangelogItem(
-                        emoji = "🔍",
-                        title = "Instant Search with Filters",
-                        desc = "Quickly search by Title, Artist, or Album with category filter chips."
                     )
                     ChangelogItem(
                         emoji = "✨",
