@@ -76,7 +76,7 @@ fun DraggablePlayerSheet(
                     targetValue = target,
                     animationSpec = spring(
                         dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = 800f
+                        stiffness = 1000f
                     )
                 )
             }
@@ -109,25 +109,21 @@ fun DraggablePlayerSheet(
                     val velocity = velocityTracker.calculateVelocity().y
                     scope.launch {
                         val deltaY = offsetY.value - dragStartOffsetY
-                        val isStartedFromCollapsed = dragStartOffsetY > maxOffset * 0.6f
-                        val isStartedFromExpanded = dragStartOffsetY < maxOffset * 0.4f
-                        val thresholdPx = with(density) { 10.dp.toPx() }
+                        val isStartedFromCollapsed = dragStartOffsetY > maxOffset * 0.5f
+                        val thresholdPx = with(density) { 2.dp.toPx() }
 
                         val target = when {
-                            // Instant micro-flick gestures (up or down like shooting a rock)
-                            velocity < -120f -> 0f              // Flick up -> expand
-                            velocity > 120f -> maxOffset        // Flick down -> collapse
-                            // Started from miniplayer: any micro upward drag expands immediately
+                            // Instant hair-trigger flick gestures (lightest thumb flick in either direction)
+                            velocity < -30f -> 0f              // Flick up -> expand
+                            velocity > 30f -> maxOffset        // Flick down -> collapse
+                            // Started from miniplayer: any micro upward movement expands immediately
                             isStartedFromCollapsed -> {
-                                if (deltaY < -thresholdPx) 0f else maxOffset
+                                if (deltaY < -thresholdPx || offsetY.value < maxOffset - 4f) 0f else maxOffset
                             }
-                            // Started from full player: any micro downward drag collapses immediately
-                            isStartedFromExpanded -> {
-                                if (deltaY > thresholdPx) maxOffset else 0f
+                            // Started from full player: any micro downward movement collapses immediately
+                            else -> {
+                                if (deltaY > thresholdPx || offsetY.value > 4f) maxOffset else 0f
                             }
-                            // Mid-screen fallback
-                            offsetY.value > maxOffset * 0.5f -> maxOffset
-                            else -> 0f
                         }
                         val willBeExpanded = (target == 0f)
                         onExpandedChange(willBeExpanded)
@@ -135,7 +131,7 @@ fun DraggablePlayerSheet(
                             targetValue = target,
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = 800f
+                                stiffness = 1000f
                             )
                         )
                     }
