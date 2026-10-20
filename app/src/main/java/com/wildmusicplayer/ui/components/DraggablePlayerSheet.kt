@@ -51,6 +51,7 @@ fun DraggablePlayerSheet(
     onSeekTo: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
+    onStop: () -> Unit,
     isExpanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
@@ -175,7 +176,8 @@ fun DraggablePlayerSheet(
                                     spring(stiffness = Spring.StiffnessMediumLow)
                                 )
                             }
-                        }
+                        },
+                        onStop = onStop
                     )
                 }
             }
@@ -205,6 +207,7 @@ fun DraggablePlayerSheet(
                         onTogglePlay = onTogglePlay,
                         onSkipNext = onSkipNext,
                         onSkipPrev = onSkipPrevious,
+                        onStop = onStop,
                         modifier = Modifier.navigationBarsPadding()
                     )
                 }

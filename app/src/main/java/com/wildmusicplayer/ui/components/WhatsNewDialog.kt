@@ -85,24 +85,19 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🎨",
-                        title = "Loading Splash Screen",
-                        desc = "Brand-new startup screen with animated circular WMP badge while tracks load."
+                        emoji = "⏹️",
+                        title = "Stop Current Playback",
+                        desc = "Easily end active playback anytime from the player header or miniplayer close button."
+                    )
+                    ChangelogItem(
+                        emoji = "💡",
+                        title = "Keep Screen On Setting",
+                        desc = "Toggle in Settings to prevent your screen from fading or shutting off while using the app."
                     )
                     ChangelogItem(
                         emoji = "⚡",
-                        title = "Flick Swipe Gestures",
-                        desc = "Ultra-responsive player gestures—flick with your thumb to open or close."
-                    )
-                    ChangelogItem(
-                        emoji = "🔄",
-                        title = "Seamless Auto-Updating",
-                        desc = "App closes cleanly during updates and notifies you when ready."
-                    )
-                    ChangelogItem(
-                        emoji = "🔒",
-                        title = "Official Release Signing",
-                        desc = "Permanent release signature ensuring no package conflict errors."
+                        title = "Flick Gestures & Stability",
+                        desc = "Refined thumb flick gestures, responsive miniplayer controls, and lifecycle optimizations."
                     )
                 }
 

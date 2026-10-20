@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -69,6 +70,7 @@ fun NowPlayingScreen(
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
     onCollapse: () -> Unit,
+    onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isDraggingSlider by remember { mutableStateOf(false) }
@@ -125,9 +127,15 @@ fun NowPlayingScreen(
                     letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)
                 )
 
-
-                // Placeholder to balance header
-                Spacer(modifier = Modifier.size(48.dp))
+                // Stop Playback Button
+                IconButton(onClick = onStop) {
+                    Icon(
+                        imageVector = Icons.Default.StopCircle,
+                        contentDescription = "Stop Playback",
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -48,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -80,6 +82,7 @@ import kotlinx.coroutines.launch
 private const val PREFS_NAME = "wild_music_player_prefs"
 private const val KEY_THEME_MODE = "theme_mode"
 private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
+private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
 
 class MainActivity : ComponentActivity() {
 
@@ -148,6 +151,21 @@ fun MusicPlayerApp(
     var showWhatsNewDialog by remember { mutableStateOf(false) }
 
     val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var keepScreenOn by remember {
+        mutableStateOf(prefs.getBoolean(KEY_KEEP_SCREEN_ON, false))
+    }
+
+    val activity = context as? ComponentActivity
+    DisposableEffect(keepScreenOn) {
+        if (keepScreenOn) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -336,6 +354,10 @@ fun MusicPlayerApp(
                 onSeekTo = { controllerManager.seekTo(it) },
                 onToggleShuffle = { controllerManager.toggleShuffle() },
                 onToggleRepeat = { controllerManager.toggleRepeatMode() },
+                onStop = {
+                    isPlayerExpanded = false
+                    controllerManager.stopPlayback()
+                },
                 isExpanded = isPlayerExpanded,
                 onExpandedChange = { isPlayerExpanded = it }
             )
@@ -347,6 +369,11 @@ fun MusicPlayerApp(
                 currentTheme = currentTheme,
                 onThemeSelected = { newTheme ->
                     onThemeChanged(newTheme)
+                },
+                keepScreenOn = keepScreenOn,
+                onKeepScreenOnToggled = { enabled ->
+                    keepScreenOn = enabled
+                    prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
                 },
                 onExitApp = {
                     showSettingsDialog = false

@@ -181,6 +181,21 @@ class MusicControllerManager(private val context: Context) {
         _isConnected.value = false
     }
 
+    /**
+     * Completely stops current playback and clears the active queue,
+     * removing the system media notification and dismissing the player bar
+     * while keeping the controller connected for future plays.
+     */
+    fun stopPlayback() {
+        stopProgressUpdates()
+        mediaController?.stop()
+        mediaController?.clearMediaItems()
+        _currentSong.value = null
+        _isPlaying.value = false
+        _currentPosition.value = 0L
+        _duration.value = 0L
+    }
+
     fun stopAndShutdown() {
         stopProgressUpdates()
         mediaController?.stop()

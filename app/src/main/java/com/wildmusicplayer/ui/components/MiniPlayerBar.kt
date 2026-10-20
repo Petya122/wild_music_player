@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -37,6 +38,7 @@ fun MiniPlayerBar(
     onTogglePlay: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrev: () -> Unit,
+    onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -105,6 +107,15 @@ fun MiniPlayerBar(
                     imageVector = Icons.Default.SkipNext,
                     contentDescription = "Next Track",
                     modifier = Modifier.size(24.dp)
+                )
+            }
+
+            IconButton(onClick = onStop) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Stop and dismiss player",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
