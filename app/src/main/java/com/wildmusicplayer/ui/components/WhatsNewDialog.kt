@@ -85,6 +85,11 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
+                        emoji = "🚀",
+                        title = "Silent Background Updates",
+                        desc = "Downloads updates quietly in the background without notification drawer clutter."
+                    )
+                    ChangelogItem(
                         emoji = "📁",
                         title = "Folder Playlists & Import",
                         desc = "Auto-detects device folders (e.g. Personal Favorite) and imports full folders as playlists."
@@ -98,11 +103,6 @@ fun WhatsNewDialog(
                         emoji = "✨",
                         title = "Visual & Branding Polish",
                         desc = "Welcome title updated to 'Wild Music Player' and fixed Shuffle button text wrapping."
-                    )
-                    ChangelogItem(
-                        emoji = "⚙️",
-                        title = "Dedicated Settings Screen",
-                        desc = "Full-page settings with grouped cards for Themes, Display, Updates, and About & Credits."
                     )
                 }
 

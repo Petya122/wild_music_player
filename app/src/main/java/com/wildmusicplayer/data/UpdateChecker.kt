@@ -1,19 +1,15 @@
 package com.wildmusicplayer.data
 
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.Uri
-import android.os.Environment
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -97,49 +93,78 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
-    fun downloadAndInstallUpdate(apkUrl: String, fileName: String) {
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val destinationFile = File(
-            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-            fileName
-        )
+    suspend fun downloadUpdateSilently(
+        apkUrl: String,
+        fileName: String,
+        onProgress: (Float) -> Unit = {}
+    ): File? = withContext(Dispatchers.IO) {
+        val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val destinationFile = File(updatesDir, fileName)
 
         if (destinationFile.exists()) {
             destinationFile.delete()
         }
 
-        val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
-            setTitle("Downloading Wild Music Player Update")
-            setDescription("Fetching latest release from GitHub...")
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationUri(Uri.fromFile(destinationFile))
-            setMimeType("application/vnd.android.package-archive")
-        }
+        var connection: HttpURLConnection? = null
+        try {
+            var currentUrl = apkUrl
+            var redirects = 0
+            while (redirects < 5) {
+                val url = URL(currentUrl)
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 15000
+                    readTimeout = 30000
+                    setRequestProperty("User-Agent", "WildMusicPlayer")
+                    instanceFollowRedirects = true
+                }
 
-        val downloadId = downloadManager.enqueue(request)
+                val code = connection.responseCode
+                if (code == HttpURLConnection.HTTP_MOVED_PERM ||
+                    code == HttpURLConnection.HTTP_MOVED_TEMP ||
+                    code == 307 || code == 308) {
+                    val location = connection.getHeaderField("Location")
+                    if (!location.isNullOrBlank()) {
+                        connection.disconnect()
+                        currentUrl = location
+                        redirects++
+                        continue
+                    }
+                }
+                break
+            }
 
-        val onComplete = object : BroadcastReceiver() {
-            override fun onReceive(recvContext: Context?, intent: Intent?) {
-                val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-                if (id == downloadId) {
-                    try {
-                        context.unregisterReceiver(this)
-                    } catch (_: Exception) {}
+            if (connection == null || connection.responseCode != HttpURLConnection.HTTP_OK) {
+                return@withContext null
+            }
 
-                    triggerApkInstall(destinationFile)
+            val totalBytes = connection.contentLengthLong
+            connection.inputStream.use { input ->
+                FileOutputStream(destinationFile).use { output ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    var totalRead = 0L
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+                        if (totalBytes > 0) {
+                            onProgress((totalRead.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f))
+                        }
+                    }
+                    output.flush()
                 }
             }
+            destinationFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            destinationFile.delete()
+            null
+        } finally {
+            connection?.disconnect()
         }
-
-        ContextCompat.registerReceiver(
-            context,
-            onComplete,
-            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_EXPORTED
-        )
     }
 
-    private fun triggerApkInstall(apkFile: File) {
+    fun triggerApkInstall(apkFile: File) {
         if (!apkFile.exists()) return
 
         val apkUri = FileProvider.getUriForFile(

@@ -29,6 +29,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,6 +77,7 @@ fun SettingsScreen(
     var updateStatusText by remember { mutableStateOf<String?>(null) }
     var availableUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
     var isDownloadingUpdate by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
 
     Column(
         modifier = modifier
@@ -279,27 +282,59 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Spacer(modifier = Modifier.height(10.dp))
-                            Button(
-                                onClick = {
-                                    isDownloadingUpdate = true
-                                    updateChecker.downloadAndInstallUpdate(
-                                        apkUrl = update.downloadUrl,
-                                        fileName = "wild_music_player-${update.latestVersion}.apk"
+                            if (isDownloadingUpdate) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Downloading update in background...",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Text(
+                                            text = "${(downloadProgress * 100).toInt()}%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    LinearProgressIndicator(
+                                        progress = { downloadProgress },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
                                     )
-                                },
-                                enabled = !isDownloadingUpdate,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                if (isDownloadingUpdate) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Downloading & Installing...")
-                                } else {
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        isDownloadingUpdate = true
+                                        downloadProgress = 0f
+                                        updateStatusText = null
+                                        scope.launch {
+                                            val apkFile = updateChecker.downloadUpdateSilently(
+                                                apkUrl = update.downloadUrl,
+                                                fileName = "wild_music_player-${update.latestVersion}.apk",
+                                                onProgress = { progress ->
+                                                    downloadProgress = progress
+                                                }
+                                            )
+                                            isDownloadingUpdate = false
+                                            if (apkFile != null) {
+                                                updateChecker.triggerApkInstall(apkFile)
+                                            } else {
+                                                updateStatusText = "Download failed. Please check internet connection."
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.CloudDownload,
                                         contentDescription = null
