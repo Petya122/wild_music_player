@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
+                        emoji = "🛡️",
+                        title = "Permissions & Privacy Guide",
+                        desc = "New section in Settings clearly explaining why each permission is needed, with a 100% privacy guarantee."
+                    )
+                    ChangelogItem(
+                        emoji = "⚙️",
+                        title = "Direct System Settings Shortcut",
+                        desc = "Jump straight to Android's App Info page to inspect or manage permissions at any time."
+                    )
+                    ChangelogItem(
                         emoji = "📥",
-                        title = "In-App YouTube Downloader",
-                        desc = "Brand new Downloader tab! Search YouTube & YouTube Music by song name or paste links to download for offline listening."
+                        title = "Offline YouTube Downloader",
+                        desc = "Search by song name or paste links in the Download tab to save studio-quality M4A tracks for offline play."
                     )
                     ChangelogItem(
-                        emoji = "🎧",
-                        title = "Lossless Audio Quality",
-                        desc = "Downloads high-fidelity native M4A/AAC streams directly to preserve original studio audio quality."
-                    )
-                    ChangelogItem(
-                        emoji = "💾",
-                        title = "Instant Offline Library Scan",
-                        desc = "Downloaded tracks save directly to your phone's Music folder and automatically appear across all tabs."
-                    )
-                    ChangelogItem(
-                        emoji = "⚡",
-                        title = "Zero App Bloat",
-                        desc = "Built with a lightweight native engine keeping the entire app fast and under 20 MB."
+                        emoji = "🔒",
+                        title = "Privacy-First Architecture",
+                        desc = "Zero analytics, zero tracking. Only audio files are read — personal photos and documents are never touched."
                     )
                 }
 

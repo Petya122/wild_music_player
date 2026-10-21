@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
@@ -54,6 +55,7 @@ import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.UpdateInfo
 import com.wildmusicplayer.data.UpdateResult
+import com.wildmusicplayer.ui.components.PermissionsDialog
 import com.wildmusicplayer.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
 
@@ -83,6 +85,7 @@ fun SettingsScreen(
     var availableUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
     var isDownloadingUpdate by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
+    var showPermissionsDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -485,6 +488,56 @@ fun SettingsScreen(
             }
         }
 
+        // Section: Permissions & Privacy Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showPermissionsDialog = true },
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = "Permissions and Privacy",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "Permissions & Privacy",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Learn why each permission is needed and manage access",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+
         // Section 4: About & Credits Card
         Card(
             modifier = Modifier
@@ -565,5 +618,9 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showPermissionsDialog) {
+        PermissionsDialog(onDismiss = { showPermissionsDialog = false })
     }
 }
