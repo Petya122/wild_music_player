@@ -95,6 +95,8 @@ private const val PREFS_NAME = "wild_music_player_prefs"
 private const val KEY_THEME_MODE = "theme_mode"
 private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
 private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+private const val KEY_FILTER_SHORT_AUDIO = "key_filter_short_audio"
+private const val KEY_FILTER_RECORDINGS = "key_filter_recordings"
 
 class MainActivity : ComponentActivity() {
 
@@ -167,6 +169,12 @@ fun MusicPlayerApp(
     var keepScreenOn by remember {
         mutableStateOf(prefs.getBoolean(KEY_KEEP_SCREEN_ON, false))
     }
+    var filterShortAudio by remember {
+        mutableStateOf(prefs.getBoolean(KEY_FILTER_SHORT_AUDIO, true))
+    }
+    var filterRecordings by remember {
+        mutableStateOf(prefs.getBoolean(KEY_FILTER_RECORDINGS, true))
+    }
 
     val activity = context as? ComponentActivity
     DisposableEffect(keepScreenOn) {
@@ -192,8 +200,14 @@ fun MusicPlayerApp(
         hasPermission = isGranted
         if (isGranted) {
             scope.launch {
-                songs = audioRepository.getLocalSongs()
+                songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
             }
+        }
+    }
+
+    LaunchedEffect(filterShortAudio, filterRecordings) {
+        if (hasPermission) {
+            songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
         }
     }
 
@@ -209,7 +223,7 @@ fun MusicPlayerApp(
         ) == PackageManager.PERMISSION_GRANTED
         hasPermission = granted
         if (granted) {
-            songs = audioRepository.getLocalSongs()
+            songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
         } else {
             permissionLauncher.launch(requiredPermission)
         }
@@ -392,6 +406,16 @@ fun MusicPlayerApp(
                                 keepScreenOn = enabled
                                 prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
                             },
+                            filterShortAudio = filterShortAudio,
+                            onFilterShortAudioToggled = { enabled ->
+                                filterShortAudio = enabled
+                                prefs.edit().putBoolean(KEY_FILTER_SHORT_AUDIO, enabled).apply()
+                            },
+                            filterRecordings = filterRecordings,
+                            onFilterRecordingsToggled = { enabled ->
+                                filterRecordings = enabled
+                                prefs.edit().putBoolean(KEY_FILTER_RECORDINGS, enabled).apply()
+                            },
                             onShowWhatsNew = {
                                 showWhatsNewDialog = true
                             },
@@ -416,7 +440,13 @@ fun MusicPlayerApp(
                                 onSongClick = playSong,
                                 onShuffleAll = shuffleAll,
                                 onNavigateToSongs = { currentTab = NavigationTab.SONGS },
-                                onNavigateToPlaylists = { currentTab = NavigationTab.PLAYLISTS }
+                                onNavigateToPlaylists = { currentTab = NavigationTab.PLAYLISTS },
+                                onRemoveRecentSong = { songId ->
+                                    playlistRepository.removeRecentlyPlayed(songId)
+                                },
+                                onClearRecentSongs = {
+                                    playlistRepository.clearRecentlyPlayed()
+                                }
                             )
                         }
                         NavigationTab.SONGS -> {

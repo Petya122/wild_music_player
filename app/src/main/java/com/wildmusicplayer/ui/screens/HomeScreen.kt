@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
@@ -50,7 +51,9 @@ fun HomeScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onShuffleAll: () -> Unit,
     onNavigateToSongs: () -> Unit,
-    onNavigateToPlaylists: () -> Unit
+    onNavigateToPlaylists: () -> Unit,
+    onRemoveRecentSong: (Long) -> Unit = {},
+    onClearRecentSongs: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -154,7 +157,12 @@ fun HomeScreen(
         if (recentlyPlayedSongs.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(16.dp))
-                SectionHeader(title = "Recently Played", count = recentlyPlayedSongs.size)
+                SectionHeader(
+                    title = "Recently Played",
+                    count = recentlyPlayedSongs.size,
+                    actionText = "Clear All",
+                    onActionClick = onClearRecentSongs
+                )
                 Spacer(modifier = Modifier.height(8.dp))
 
                 LazyRow(
@@ -165,7 +173,8 @@ fun HomeScreen(
                         RecentSongCard(
                             song = song,
                             isCurrent = song.id == currentPlayingSongId,
-                            onClick = { onSongClick(song, recentlyPlayedSongs) }
+                            onClick = { onSongClick(song, recentlyPlayedSongs) },
+                            onRemove = { onRemoveRecentSong(song.id) }
                         )
                     }
                 }
@@ -276,7 +285,8 @@ private fun SectionHeader(
 private fun RecentSongCard(
     song: Song,
     isCurrent: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onRemove: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
@@ -291,12 +301,34 @@ private fun RecentSongCard(
         )
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
-            SongThumbnail(
-                albumArtUri = song.albumArtUri,
-                modifier = Modifier
-                    .size(116.dp)
-                    .clip(RoundedCornerShape(10.dp))
-            )
+            Box(modifier = Modifier.size(116.dp)) {
+                SongThumbnail(
+                    albumArtUri = song.albumArtUri,
+                    modifier = Modifier
+                        .size(116.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                )
+                if (onRemove != null) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .size(24.dp)
+                            .clickable(onClick = onRemove)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Remove from Recently Played",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = song.title,

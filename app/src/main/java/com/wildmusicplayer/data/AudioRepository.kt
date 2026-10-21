@@ -17,7 +17,10 @@ import kotlinx.coroutines.withContext
  */
 class AudioRepository(private val context: Context) {
 
-    suspend fun getLocalSongs(): List<Song> = withContext(Dispatchers.IO) {
+    suspend fun getLocalSongs(
+        filterShortClips: Boolean = true,
+        filterRecordings: Boolean = true
+    ): List<Song> = withContext(Dispatchers.IO) {
         val songList = mutableListOf<Song>()
 
         val projection = mutableListOf(
@@ -34,11 +37,23 @@ class AudioRepository(private val context: Context) {
             }
         }.toTypedArray()
 
-        // Filter: real music only, minimum 10 seconds to exclude notification chimes
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= 10000"
+        // Filter: real music only, minimum duration threshold
+        val minDuration = if (filterShortClips) 30000 else 5000
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= $minDuration AND " +
+                "(${MediaStore.Audio.Media.IS_RINGTONE} = 0 OR ${MediaStore.Audio.Media.IS_RINGTONE} IS NULL) AND " +
+                "(${MediaStore.Audio.Media.IS_NOTIFICATION} = 0 OR ${MediaStore.Audio.Media.IS_NOTIFICATION} IS NULL) AND " +
+                "(${MediaStore.Audio.Media.IS_ALARM} = 0 OR ${MediaStore.Audio.Media.IS_ALARM} IS NULL)"
+
         val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
 
         val collectionUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+
+        val recordingRegex = Regex("""^\d{8}_\d{6}""")
+        val excludedKeywords = listOf(
+            "recording", "sound_recorder", "soundrecorder", "callrec", "call_rec",
+            "voice_rec", "voicerec", "voicenote", "voice note", "whatsapp", "telegram",
+            "viber", "messenger", "notification", "ringtone", "alarm", "system/media", ".thumbnails"
+        )
 
         context.contentResolver.query(
             collectionUri,
@@ -83,6 +98,19 @@ class AudioRepository(private val context: Context) {
                         rawRelativePath.trim('/').split('/').lastOrNull { it.isNotBlank() } ?: "Music"
                     }
                     else -> "Music"
+                }
+
+                if (filterRecordings) {
+                    val pathLower = (rawData ?: "").lowercase()
+                    val folderLower = folderName.lowercase()
+                    val isExcludedPath = excludedKeywords.any { pathLower.contains(it) || folderLower.contains(it) }
+
+                    val isTimestampedRecording = recordingRegex.containsMatchIn(rawTitle) ||
+                            (rawData != null && recordingRegex.containsMatchIn(java.io.File(rawData).nameWithoutExtension))
+
+                    if (isExcludedPath || isTimestampedRecording) {
+                        continue
+                    }
                 }
 
                 val contentUri = ContentUris.withAppendedId(collectionUri, id)

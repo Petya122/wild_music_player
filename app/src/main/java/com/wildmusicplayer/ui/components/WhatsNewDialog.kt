@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🚀",
-                        title = "Silent Background Updates",
-                        desc = "Downloads updates quietly in the background without notification drawer clutter."
+                        emoji = "🎵",
+                        title = "Smart Audio Filtering",
+                        desc = "Filters out non-music sounds like phone voice memos (20250724_...), call recordings, ringtones, and notification sounds."
                     )
                     ChangelogItem(
-                        emoji = "📁",
-                        title = "Folder Playlists & Import",
-                        desc = "Auto-detects device folders (e.g. Personal Favorite) and imports full folders as playlists."
+                        emoji = "🕒",
+                        title = "Manage Recently Played",
+                        desc = "Easily remove specific tracks with the new 'X' button or clear the entire history with 'Clear All'."
                     )
                     ChangelogItem(
-                        emoji = "🧭",
-                        title = "Uninterrupted Navigation",
-                        desc = "Seamlessly switch between all tabs while music plays without having to cancel playback."
+                        emoji = "⚙️",
+                        title = "Audio Library Controls",
+                        desc = "New toggles in Settings to customize short clip (<30s) and voice memo exclusions according to your preference."
                     )
                     ChangelogItem(
                         emoji = "✨",
-                        title = "Visual & Branding Polish",
-                        desc = "Welcome title updated to 'Wild Music Player' and fixed Shuffle button text wrapping."
+                        title = "Performance & Polish",
+                        desc = "Streamlined track scanning and cleaner library display across all tabs."
                     )
                 }
 

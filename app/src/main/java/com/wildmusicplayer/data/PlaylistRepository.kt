@@ -113,6 +113,21 @@ class PlaylistRepository(context: Context) {
         prefs.edit().putString(KEY_RECENTLY_PLAYED, jsonArray.toString()).apply()
     }
 
+    fun removeRecentlyPlayed(songId: Long) {
+        val current = _recentlyPlayedIds.value.toMutableList()
+        current.remove(songId)
+        _recentlyPlayedIds.value = current
+
+        val jsonArray = JSONArray()
+        current.forEach { jsonArray.put(it) }
+        prefs.edit().putString(KEY_RECENTLY_PLAYED, jsonArray.toString()).apply()
+    }
+
+    fun clearRecentlyPlayed() {
+        _recentlyPlayedIds.value = emptyList()
+        prefs.edit().remove(KEY_RECENTLY_PLAYED).apply()
+    }
+
     fun createPlaylist(name: String, songIds: List<Long> = emptyList()): Playlist {
         val newPlaylist = Playlist(name = name, songIds = songIds)
         val updated = _customPlaylists.value + newPlaylist
