@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🎵",
-                        title = "Smart Audio Filtering",
-                        desc = "Filters out non-music sounds like phone voice memos (20250724_...), call recordings, ringtones, and notification sounds."
+                        emoji = "📥",
+                        title = "In-App YouTube Downloader",
+                        desc = "Brand new Downloader tab! Search YouTube & YouTube Music by song name or paste links to download for offline listening."
                     )
                     ChangelogItem(
-                        emoji = "🕒",
-                        title = "Manage Recently Played",
-                        desc = "Easily remove specific tracks with the new 'X' button or clear the entire history with 'Clear All'."
+                        emoji = "🎧",
+                        title = "Lossless Audio Quality",
+                        desc = "Downloads high-fidelity native M4A/AAC streams directly to preserve original studio audio quality."
                     )
                     ChangelogItem(
-                        emoji = "⚙️",
-                        title = "Audio Library Controls",
-                        desc = "New toggles in Settings to customize short clip (<30s) and voice memo exclusions according to your preference."
+                        emoji = "💾",
+                        title = "Instant Offline Library Scan",
+                        desc = "Downloaded tracks save directly to your phone's Music folder and automatically appear across all tabs."
                     )
                     ChangelogItem(
-                        emoji = "✨",
-                        title = "Performance & Polish",
-                        desc = "Streamlined track scanning and cleaner library display across all tabs."
+                        emoji = "⚡",
+                        title = "Zero App Bloat",
+                        desc = "Built with a lightweight native engine keeping the entire app fast and under 20 MB."
                     )
                 }
 

@@ -73,6 +73,7 @@ import androidx.core.content.ContextCompat
 import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.AudioRepository
 import com.wildmusicplayer.data.PlaylistRepository
+import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.ui.components.AboutDialog
@@ -80,6 +81,7 @@ import com.wildmusicplayer.ui.components.DraggablePlayerSheet
 import com.wildmusicplayer.ui.components.SongThumbnail
 import com.wildmusicplayer.ui.components.SplashScreen
 import com.wildmusicplayer.ui.components.WhatsNewDialog
+import com.wildmusicplayer.ui.screens.DownloaderScreen
 import com.wildmusicplayer.ui.screens.HomeScreen
 import com.wildmusicplayer.ui.screens.NavigationTab
 import com.wildmusicplayer.ui.screens.PlaylistsScreen
@@ -155,6 +157,7 @@ fun MusicPlayerApp(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val audioRepository = remember { AudioRepository(context) }
+    val downloadManager = remember { YouTubeDownloadManager(context) }
 
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -306,6 +309,7 @@ fun MusicPlayerApp(
                                     NavigationTab.SONGS -> "Songs"
                                     NavigationTab.SEARCH -> "Search"
                                     NavigationTab.PLAYLISTS -> "Playlists"
+                                    NavigationTab.DOWNLOADER -> "Downloader"
                                 }
                             },
                             fontWeight = FontWeight.Bold
@@ -482,6 +486,17 @@ fun MusicPlayerApp(
                                 onToggleFavorite = { playlistRepository.toggleFavorite(it) },
                                 onCreatePlaylist = { name, songIds -> playlistRepository.createPlaylist(name, songIds) },
                                 onDeletePlaylist = { playlistRepository.deletePlaylist(it) }
+                            )
+                        }
+                        NavigationTab.DOWNLOADER -> {
+                            DownloaderScreen(
+                                downloadManager = downloadManager,
+                                bottomPadding = contentBottomPadding,
+                                onDownloadComplete = {
+                                    scope.launch {
+                                        songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
+                                    }
+                                }
                             )
                         }
                     }
