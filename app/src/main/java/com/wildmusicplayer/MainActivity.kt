@@ -373,6 +373,9 @@ fun MusicPlayerApp(
                                 label = {
                                     Text(
                                         text = tab.title,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         fontWeight = if (!isSettingsOpen && currentTab == tab) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },

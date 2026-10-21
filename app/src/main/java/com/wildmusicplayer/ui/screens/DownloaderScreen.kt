@@ -222,7 +222,7 @@ fun DownloaderScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Text(
-                            text = "Download Offline Music",
+                            text = "Save Music for Offline Play",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -231,7 +231,7 @@ fun DownloaderScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "Search songs, artists, or paste a link from YouTube / YouTube Music. Tracks are saved directly to your phone's Music folder in high quality (.m4a) for 100% offline playback.",
+                            text = "Search songs, artists, or paste a link from YouTube / YouTube Music. Tracks are saved directly to your phone's Music folder in high quality (.m4a) for 100% offline playback anytime.",
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -66,18 +66,28 @@ class YouTubeDownloadManager(private val context: Context) {
                         val headers = request.headers()
                         val dataToSend = request.dataToSend()
 
-                        val body = dataToSend?.let {
-                            it.toRequestBody("application/x-www-form-urlencoded; charset=utf-8".toMediaType())
-                        }
+                        val contentType = headers["Content-Type"]?.firstOrNull()
+                            ?: headers["content-type"]?.firstOrNull()
+                            ?: "application/json; charset=utf-8"
+
+                        val body = dataToSend?.toRequestBody(contentType.toMediaType())
 
                         val builder = OkHttpRequest.Builder()
                             .url(url)
                             .method(httpMethod, body)
 
+                        var hasUserAgent = false
                         for ((key, valueList) in headers) {
-                            for (value in valueList) {
-                                builder.addHeader(key, value)
+                            if (key.equals("User-Agent", ignoreCase = true)) {
+                                hasUserAgent = true
                             }
+                            for (value in valueList) {
+                                builder.header(key, value)
+                            }
+                        }
+
+                        if (!hasUserAgent) {
+                            builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                         }
 
                         val okResponse = httpClient.newCall(builder.build()).execute()
@@ -103,6 +113,33 @@ class YouTubeDownloadManager(private val context: Context) {
         try {
             val trimmed = query.trim()
             if (trimmed.isEmpty()) return@withContext emptyList()
+
+            // If the user pastes a direct YouTube / YouTube Music link
+            val isUrl = trimmed.startsWith("http://", ignoreCase = true) ||
+                    trimmed.startsWith("https://", ignoreCase = true) ||
+                    trimmed.contains("youtube.com/", ignoreCase = true) ||
+                    trimmed.contains("youtu.be/", ignoreCase = true)
+
+            if (isUrl) {
+                var cleanUrl = trimmed
+                if (!cleanUrl.startsWith("http://", ignoreCase = true) && !cleanUrl.startsWith("https://", ignoreCase = true)) {
+                    cleanUrl = "https://$cleanUrl"
+                }
+                // Normalize YouTube Music to standard YouTube for stream extraction
+                cleanUrl = cleanUrl.replace("music.youtube.com", "www.youtube.com")
+
+                val streamInfo = StreamInfo.getInfo(cleanUrl)
+                return@withContext listOf(
+                    YouTubeTrack(
+                        id = streamInfo.url ?: cleanUrl,
+                        title = streamInfo.name ?: "Unknown Title",
+                        uploaderName = streamInfo.uploaderName ?: "Unknown Artist",
+                        durationSeconds = streamInfo.duration,
+                        thumbnailUrl = streamInfo.thumbnails?.firstOrNull()?.url,
+                        webUrl = streamInfo.url ?: cleanUrl
+                    )
+                )
+            }
 
             val searchExtractor = ServiceList.YouTube.getSearchExtractor(trimmed)
             searchExtractor.fetchPage()

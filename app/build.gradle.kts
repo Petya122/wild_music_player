@@ -20,8 +20,8 @@ android {
         applicationId = "com.wildmusicplayer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.4.1"
+        versionCode = 19
+        versionName = "0.4.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -95,7 +95,7 @@ dependencies {
 
     // Networking & YouTube Extraction
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.github.TeamNewPipe.NewPipeExtractor:extractor:v0.24.5")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
 
 
     testImplementation(libs.junit)

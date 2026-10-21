@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🛡️",
-                        title = "Permissions & Privacy Guide",
-                        desc = "New section in Settings clearly explaining why each permission is needed, with a 100% privacy guarantee."
+                        emoji = "⚡",
+                        title = "Enhanced Downloader & Link Support",
+                        desc = "Instant search by track or artist, with direct support for YouTube and YouTube Music links."
                     )
                     ChangelogItem(
-                        emoji = "⚙️",
-                        title = "Direct System Settings Shortcut",
-                        desc = "Jump straight to Android's App Info page to inspect or manage permissions at any time."
+                        emoji = "📐",
+                        title = "Refined Navigation Layout",
+                        desc = "Balanced bottom tab spacing and typography for perfectly centered, comfortable navigation."
                     )
                     ChangelogItem(
                         emoji = "📥",
-                        title = "Offline YouTube Downloader",
-                        desc = "Search by song name or paste links in the Download tab to save studio-quality M4A tracks for offline play."
+                        title = "Save Music for Offline Play",
+                        desc = "Download studio-quality M4A tracks directly to your device's Music folder for offline listening anytime."
                     )
                     ChangelogItem(
-                        emoji = "🔒",
-                        title = "Privacy-First Architecture",
-                        desc = "Zero analytics, zero tracking. Only audio files are read — personal photos and documents are never touched."
+                        emoji = "🛡️",
+                        title = "Permissions & Privacy Guide",
+                        desc = "Transparent explanations in Settings detailing why permissions are needed and how privacy is guaranteed."
                     )
                 }
 
