@@ -274,4 +274,21 @@ class YouTubeDownloadManager(private val context: Context) {
             Result.failure(e)
         }
     }
+
+    suspend fun getStreamUrl(track: YouTubeTrack): String? = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        try {
+            val streamInfo = StreamInfo.getInfo(track.webUrl)
+            val audioStreams = streamInfo.audioStreams
+            val bestAudioStream = audioStreams
+                ?.filter { it.format?.name?.contains("m4a", ignoreCase = true) == true }
+                ?.maxByOrNull { it.averageBitrate }
+                ?: audioStreams?.maxByOrNull { it.averageBitrate }
+                ?: audioStreams?.firstOrNull()
+            bestAudioStream?.content
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 }

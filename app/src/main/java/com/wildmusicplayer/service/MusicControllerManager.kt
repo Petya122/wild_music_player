@@ -119,6 +119,39 @@ class MusicControllerManager(private val context: Context) {
         controller.play()
     }
 
+    fun playOnlineStream(title: String, artist: String, streamUrl: String, artworkUrl: String? = null) {
+        val controller = mediaController ?: return
+        val metadata = androidx.media3.common.MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(artist)
+            .setDisplayTitle(title)
+            .setArtworkUri(artworkUrl?.let { android.net.Uri.parse(it) })
+            .setIsPlayable(true)
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setMediaId("online_${System.currentTimeMillis()}")
+            .setUri(android.net.Uri.parse(streamUrl))
+            .setMediaMetadata(metadata)
+            .build()
+
+        val virtualSong = Song(
+            id = -1L,
+            title = title,
+            artist = artist,
+            album = "YouTube Stream",
+            duration = 0L,
+            contentUri = android.net.Uri.parse(streamUrl),
+            albumArtUri = artworkUrl?.let { android.net.Uri.parse(it) }
+        )
+        currentPlaylist = listOf(virtualSong)
+        _currentSong.value = virtualSong
+
+        controller.setMediaItem(mediaItem)
+        controller.prepare()
+        controller.play()
+    }
+
     fun togglePlayPause() {
         val controller = mediaController ?: return
         if (controller.isPlaying) {

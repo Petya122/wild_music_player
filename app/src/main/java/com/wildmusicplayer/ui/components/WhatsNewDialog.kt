@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "⚡",
-                        title = "Enhanced Downloader & Link Support",
-                        desc = "Instant search by track or artist, with direct support for YouTube and YouTube Music links."
+                        emoji = "🎵",
+                        title = "Interactive Song Card Sheet",
+                        desc = "Tap any song card to preview and stream online in Wild Music Player, download offline, or share."
                     )
                     ChangelogItem(
-                        emoji = "📐",
-                        title = "Refined Navigation Layout",
-                        desc = "Balanced bottom tab spacing and typography for perfectly centered, comfortable navigation."
+                        emoji = "⚡",
+                        title = "Dynamic Debounced Search",
+                        desc = "Smooth, responsive search as you type without lag, with instantaneous reset when search is cleared."
                     )
                     ChangelogItem(
                         emoji = "📥",
                         title = "Save Music for Offline Play",
-                        desc = "Download studio-quality M4A tracks directly to your device's Music folder for offline listening anytime."
+                        desc = "Download studio-quality M4A tracks directly to your Music folder for 100% offline playback."
                     )
                     ChangelogItem(
-                        emoji = "🛡️",
-                        title = "Permissions & Privacy Guide",
-                        desc = "Transparent explanations in Settings detailing why permissions are needed and how privacy is guaranteed."
+                        emoji = "📐",
+                        title = "Refined UI & Navigation",
+                        desc = "Balanced navigation bar centering and clean single-line header cards."
                     )
                 }
 

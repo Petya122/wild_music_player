@@ -494,6 +494,7 @@ fun MusicPlayerApp(
                         NavigationTab.DOWNLOADER -> {
                             DownloaderScreen(
                                 downloadManager = downloadManager,
+                                controllerManager = controllerManager,
                                 bottomPadding = contentBottomPadding,
                                 onDownloadComplete = {
                                     scope.launch {
