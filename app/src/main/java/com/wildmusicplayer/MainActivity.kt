@@ -73,6 +73,7 @@ import androidx.core.content.ContextCompat
 import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.AudioRepository
 import com.wildmusicplayer.data.PlaylistRepository
+import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
@@ -158,6 +159,7 @@ fun MusicPlayerApp(
     val scope = rememberCoroutineScope()
     val audioRepository = remember { AudioRepository(context) }
     val downloadManager = remember { YouTubeDownloadManager(context) }
+    val updateChecker = remember { UpdateChecker(context) }
 
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -215,6 +217,9 @@ fun MusicPlayerApp(
     }
 
     LaunchedEffect(Unit) {
+        // Automatically clean up old update APKs left in cache
+        updateChecker.cleanOldApks()
+
         val lastSeenVersion = prefs.getString(KEY_LAST_SEEN_VERSION, null)
         val currentVersion = BuildConfig.VERSION_NAME
         val isNewVersion = lastSeenVersion != null && lastSeenVersion != currentVersion

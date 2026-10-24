@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🎵",
-                        title = "Interactive Song Card Sheet",
-                        desc = "Tap any song card to preview and stream online in Wild Music Player, download offline, or share."
-                    )
-                    ChangelogItem(
-                        emoji = "⚡",
-                        title = "Dynamic Debounced Search",
-                        desc = "Smooth, responsive search as you type without lag, with instantaneous reset when search is cleared."
-                    )
-                    ChangelogItem(
                         emoji = "📥",
-                        title = "Save Music for Offline Play",
-                        desc = "Download studio-quality M4A tracks directly to your Music folder for 100% offline playback."
+                        title = "Background Song Downloads",
+                        desc = "Downloads persist seamlessly when app is tabbed out, minimized, or screen is off—then automatically shuts off."
                     )
                     ChangelogItem(
-                        emoji = "📐",
-                        title = "Refined UI & Navigation",
-                        desc = "Balanced navigation bar centering and clean single-line header cards."
+                        emoji = "📶",
+                        title = "Network Download Rules",
+                        desc = "Choose Wi-Fi Only, Ask on Mobile Data, or Always Allow. Plus protection against metered hotspots."
+                    )
+                    ChangelogItem(
+                        emoji = "⚙️",
+                        title = "Scaffolded Settings UI",
+                        desc = "Clean, compact Settings organization with quick modal pickers to avoid long scrolling lists."
+                    )
+                    ChangelogItem(
+                        emoji = "🧹",
+                        title = "Storage & Cache Manager",
+                        desc = "View live cache size and clear temp files and old updates in one tap."
                     )
                 }
 

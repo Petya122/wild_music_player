@@ -189,6 +189,82 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
+    /**
+     * Deletes all downloaded APK files in context.cacheDir/updates/.
+     * Returns total bytes freed.
+     */
+    suspend fun cleanOldApks(): Long = withContext(Dispatchers.IO) {
+        var freedBytes = 0L
+        try {
+            val updatesDir = File(context.cacheDir, "updates")
+            if (updatesDir.exists() && updatesDir.isDirectory) {
+                updatesDir.listFiles()?.forEach { file ->
+                    if (file.isFile && file.extension.equals("apk", ignoreCase = true)) {
+                        val len = file.length()
+                        if (file.delete()) {
+                            freedBytes += len
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        freedBytes
+    }
+
+    /**
+     * Computes the total byte size of context.cacheDir recursively.
+     */
+    suspend fun getCacheSizeBytes(): Long = withContext(Dispatchers.IO) {
+        getDirSize(context.cacheDir)
+    }
+
+    /**
+     * Purges all files and subdirectories inside context.cacheDir.
+     */
+    suspend fun clearAppCache(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val cache = context.cacheDir
+            if (cache.exists()) {
+                cache.listFiles()?.forEach { child ->
+                    child.deleteRecursively()
+                }
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    private fun getDirSize(dir: File?): Long {
+        if (dir == null || !dir.exists()) return 0L
+        var total = 0L
+        val children = dir.listFiles() ?: return 0L
+        for (child in children) {
+            total += if (child.isDirectory) {
+                getDirSize(child)
+            } else {
+                child.length()
+            }
+        }
+        return total
+    }
+
+    companion object {
+        fun formatFileSize(bytes: Long): String {
+            if (bytes <= 0) return "0 KB"
+            if (bytes < 1024) return "$bytes B"
+            val kb = bytes / 1024.0
+            if (kb < 1024) return String.format(java.util.Locale.US, "%.1f KB", kb)
+            val mb = kb / 1024.0
+            if (mb < 1024) return String.format(java.util.Locale.US, "%.1f MB", mb)
+            val gb = mb / 1024.0
+            return String.format(java.util.Locale.US, "%.2f GB", gb)
+        }
+    }
+
     private fun isNewerVersion(remote: String, current: String): Boolean {
         val remoteParts = remote.split(".").mapNotNull { it.toIntOrNull() }
         val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }

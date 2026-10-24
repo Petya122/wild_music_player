@@ -12,6 +12,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request as OkHttpRequest
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
@@ -21,6 +22,7 @@ import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -30,7 +32,10 @@ data class YouTubeTrack(
     val uploaderName: String,
     val durationSeconds: Long,
     val thumbnailUrl: String?,
-    val webUrl: String
+    val webUrl: String,
+    val viewCount: Long = -1L,
+    val likeCount: Long = -1L,
+    val isUploaderVerified: Boolean = false
 ) {
     val formattedDuration: String
         get() {
@@ -39,6 +44,25 @@ data class YouTubeTrack(
             val seconds = durationSeconds % 60
             return "%d:%02d".format(minutes, seconds)
         }
+
+    val formattedViews: String?
+        get() = formatMetric(viewCount, "views")
+
+    val formattedLikes: String?
+        get() = formatMetric(likeCount, "likes")
+
+    companion object {
+        fun formatMetric(count: Long, unit: String): String? {
+            if (count < 0) return null
+            val formatted = when {
+                count >= 1_000_000_000 -> String.format(Locale.US, "%.1fB", count / 1_000_000_000.0)
+                count >= 1_000_000 -> String.format(Locale.US, "%.1fM", count / 1_000_000.0)
+                count >= 1_000 -> String.format(Locale.US, "%.1fK", count / 1_000.0)
+                else -> count.toString()
+            }
+            return "$formatted $unit"
+        }
+    }
 }
 
 class YouTubeDownloadManager(private val context: Context) {
@@ -48,12 +72,53 @@ class YouTubeDownloadManager(private val context: Context) {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    private val historyPrefs by lazy {
+        context.getSharedPreferences("downloader_search_history", Context.MODE_PRIVATE)
+    }
+
     companion object {
         private val isInitialized = AtomicBoolean(false)
     }
 
     init {
         ensureInitialized()
+    }
+
+    fun getSearchHistory(): List<String> {
+        val raw = historyPrefs.getString("recent_queries", null) ?: return emptyList()
+        return try {
+            val jsonArray = JSONArray(raw)
+            val list = mutableListOf<String>()
+            for (i in 0 until jsonArray.length()) {
+                val item = jsonArray.optString(i)
+                if (item.isNotBlank()) list.add(item)
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun addSearchHistory(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return
+        val current = getSearchHistory().toMutableList()
+        current.removeAll { it.equals(trimmed, ignoreCase = true) }
+        current.add(0, trimmed)
+        val trimmedList = current.take(15)
+        val jsonArray = JSONArray(trimmedList)
+        historyPrefs.edit().putString("recent_queries", jsonArray.toString()).apply()
+    }
+
+    fun removeSearchHistory(query: String) {
+        val current = getSearchHistory().toMutableList()
+        current.removeAll { it.equals(query.trim(), ignoreCase = true) }
+        val jsonArray = JSONArray(current)
+        historyPrefs.edit().putString("recent_queries", jsonArray.toString()).apply()
+    }
+
+    fun clearSearchHistory() {
+        historyPrefs.edit().remove("recent_queries").apply()
     }
 
     private fun ensureInitialized() {
@@ -136,7 +201,10 @@ class YouTubeDownloadManager(private val context: Context) {
                         uploaderName = streamInfo.uploaderName ?: "Unknown Artist",
                         durationSeconds = streamInfo.duration,
                         thumbnailUrl = streamInfo.thumbnails?.firstOrNull()?.url,
-                        webUrl = streamInfo.url ?: cleanUrl
+                        webUrl = streamInfo.url ?: cleanUrl,
+                        viewCount = streamInfo.viewCount,
+                        likeCount = streamInfo.likeCount,
+                        isUploaderVerified = streamInfo.isUploaderVerified
                     )
                 )
             }
@@ -153,13 +221,36 @@ class YouTubeDownloadManager(private val context: Context) {
                     title = item.name ?: "Unknown Title",
                     uploaderName = item.uploaderName ?: "Unknown Artist",
                     durationSeconds = item.duration,
-                    thumbnailUrl = item.thumbnails.firstOrNull()?.url,
-                    webUrl = item.url
+                    thumbnailUrl = item.thumbnails?.firstOrNull()?.url,
+                    webUrl = item.url,
+                    viewCount = item.viewCount,
+                    likeCount = -1L,
+                    isUploaderVerified = item.isUploaderVerified
                 )
             }
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+
+    suspend fun fetchTrackDetails(track: YouTubeTrack): YouTubeTrack = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        try {
+            var targetUrl = track.webUrl
+            if (!targetUrl.startsWith("http://", ignoreCase = true) && !targetUrl.startsWith("https://", ignoreCase = true)) {
+                targetUrl = "https://$targetUrl"
+            }
+            targetUrl = targetUrl.replace("music.youtube.com", "www.youtube.com")
+            val streamInfo = StreamInfo.getInfo(targetUrl)
+            track.copy(
+                viewCount = if (streamInfo.viewCount >= 0) streamInfo.viewCount else track.viewCount,
+                likeCount = streamInfo.likeCount,
+                isUploaderVerified = streamInfo.isUploaderVerified
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            track
         }
     }
 

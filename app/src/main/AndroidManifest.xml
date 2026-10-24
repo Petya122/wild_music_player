@@ -5,7 +5,10 @@
     <!-- Foreground playback & lock-screen / notification permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Storage permissions to scan and save local music files -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
@@ -50,6 +53,12 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- Background Song Download Service (persists until completion, then shuts off) -->
+        <service
+            android:name=".service.SongDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- FileProvider for installing downloaded APK updates -->
         <provider

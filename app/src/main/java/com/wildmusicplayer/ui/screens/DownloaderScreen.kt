@@ -4,9 +4,12 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,16 +27,23 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,17 +51,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.wildmusicplayer.data.DownloadNetworkMode
+import com.wildmusicplayer.data.DownloadPrecondition
+import com.wildmusicplayer.data.NetworkPolicyManager
+import com.wildmusicplayer.service.SongDownloadService
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +91,55 @@ import com.wildmusicplayer.service.MusicControllerManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+enum class DownloaderSortOrder(val label: String, val emoji: String) {
+    ORIGINAL("Original / Best", "🌟"),
+    VIEWS("Most Viewed", "👁"),
+    DEFAULT("Default", "⚡")
+}
+
+private fun calculateOriginalScore(track: YouTubeTrack, query: String): Long {
+    var score = track.viewCount.coerceAtLeast(0) / 1000
+
+    val titleLower = track.title.lowercase()
+    val uploaderLower = track.uploaderName.lowercase()
+    val queryLower = query.lowercase().trim()
+
+    // Title match bonus
+    if (queryLower.isNotBlank() && titleLower.contains(queryLower)) {
+        score += 300_000
+    }
+
+    // Strong signals of official/original releases
+    if (track.isUploaderVerified) {
+        score += 500_000
+    }
+    if (uploaderLower.endsWith(" - topic") || uploaderLower.contains("vevo") || uploaderLower.contains("official")) {
+        score += 400_000
+    }
+    if (titleLower.contains("official video") || titleLower.contains("official music video") || titleLower.contains("official audio")) {
+        score += 250_000
+    }
+    if (titleLower.contains("original mix") || titleLower.contains("radio edit")) {
+        score += 150_000
+    }
+
+    // Penalize derivative/loop/reaction content
+    if (titleLower.contains("nightcore") || titleLower.contains("8d audio") || titleLower.contains("bass boosted") ||
+        titleLower.contains("1 hour") || titleLower.contains("10 hour") || titleLower.contains("10 hours") ||
+        titleLower.contains("reaction") || titleLower.contains("earrape")) {
+        score -= 2_000_000
+    }
+
+    // Normal song duration (1.5 to 7 minutes)
+    if (track.durationSeconds in 90..450) {
+        score += 100_000
+    } else if (track.durationSeconds > 900) {
+        score -= 500_000
+    }
+
+    return score
+}
+
 @Composable
 fun DownloaderScreen(
     downloadManager: YouTubeDownloadManager,
@@ -90,22 +156,49 @@ fun DownloaderScreen(
     var isSearching by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<YouTubeTrack>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var activeSortOrder by remember { mutableStateOf(DownloaderSortOrder.ORIGINAL) }
+
+    var searchHistory by remember { mutableStateOf(downloadManager.getSearchHistory()) }
 
     // Track download state: trackId -> progress (0.0 to 1.0)
     val activeDownloads = remember { mutableStateMapOf<String, Float>() }
     val completedDownloads = remember { mutableStateMapOf<String, Boolean>() }
 
+    val serviceActiveDownloads by SongDownloadService.activeDownloads.collectAsState()
+    val serviceCompletedTracks by SongDownloadService.completedTrackIds.collectAsState()
+
+    val networkPolicyManager = remember { NetworkPolicyManager(context) }
+    var trackPendingMobileConfirmation by remember { mutableStateOf<YouTubeTrack?>(null) }
+
     // State for interactive song card action dialog
     var selectedTrackForAction by remember { mutableStateOf<YouTubeTrack?>(null) }
     var isPreparingStream by remember { mutableStateOf(false) }
 
-    // Direct search function (e.g. on keyboard search action)
+    // Sorted results based on activeSortOrder
+    val sortedResults = remember(searchResults, activeSortOrder, searchQuery) {
+        when (activeSortOrder) {
+            DownloaderSortOrder.ORIGINAL -> {
+                searchResults.sortedByDescending { calculateOriginalScore(it, searchQuery) }
+            }
+            DownloaderSortOrder.VIEWS -> {
+                searchResults.sortedByDescending { it.viewCount }
+            }
+            DownloaderSortOrder.DEFAULT -> {
+                searchResults
+            }
+        }
+    }
+
+    // Direct search execution
     val executeSearch = { query: String ->
         val trimmed = query.trim()
         if (trimmed.isNotBlank()) {
             focusManager.clearFocus()
             isSearching = true
             searchError = null
+            downloadManager.addSearchHistory(trimmed)
+            searchHistory = downloadManager.getSearchHistory()
+
             scope.launch {
                 try {
                     val results = downloadManager.search(trimmed)
@@ -141,6 +234,9 @@ fun DownloaderScreen(
             searchResults = results
             if (results.isEmpty()) {
                 searchError = "No songs found for '$trimmed'. Try another search term or paste a link."
+            } else {
+                downloadManager.addSearchHistory(trimmed)
+                searchHistory = downloadManager.getSearchHistory()
             }
         } catch (e: Exception) {
             searchError = "Search failed: ${e.localizedMessage ?: "Unknown error"}"
@@ -149,30 +245,52 @@ fun DownloaderScreen(
         }
     }
 
+    val performDownload: (YouTubeTrack) -> Unit = { track ->
+        if (networkPolicyManager.backgroundDownloads) {
+            SongDownloadService.startDownload(context, track)
+            Toast.makeText(context, "Downloading in background: ${track.title}", Toast.LENGTH_SHORT).show()
+        } else {
+            val progress = activeDownloads[track.id]
+            if (progress == null) {
+                activeDownloads[track.id] = 0f
+                scope.launch {
+                    val result = downloadManager.downloadTrack(track) { p ->
+                        activeDownloads[track.id] = p
+                    }
+                    activeDownloads.remove(track.id)
+                    if (result.isSuccess) {
+                        completedDownloads[track.id] = true
+                        Toast.makeText(
+                            context,
+                            "Downloaded: ${track.title}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        onDownloadComplete()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "Download failed: ${result.exceptionOrNull()?.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
     val triggerDownload: (YouTubeTrack) -> Unit = { track ->
-        val progress = activeDownloads[track.id]
-        if (progress == null) {
-            activeDownloads[track.id] = 0f
-            scope.launch {
-                val result = downloadManager.downloadTrack(track) { p ->
-                    activeDownloads[track.id] = p
-                }
-                activeDownloads.remove(track.id)
-                if (result.isSuccess) {
-                    completedDownloads[track.id] = true
-                    Toast.makeText(
-                        context,
-                        "Downloaded: ${track.title}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    onDownloadComplete()
-                } else {
-                    Toast.makeText(
-                        context,
-                        "Download failed: ${result.exceptionOrNull()?.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+        when (networkPolicyManager.checkDownloadPrecondition()) {
+            is DownloadPrecondition.Allowed -> {
+                performDownload(track)
+            }
+            is DownloadPrecondition.PromptMobileData -> {
+                trackPendingMobileConfirmation = track
+            }
+            is DownloadPrecondition.BlockedNoNetwork -> {
+                Toast.makeText(context, "No internet connection available.", Toast.LENGTH_SHORT).show()
+            }
+            is DownloadPrecondition.BlockedMetered -> {
+                Toast.makeText(context, "Downloads blocked on metered network (check Settings).", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -221,6 +339,42 @@ fun DownloaderScreen(
             keyboardActions = KeyboardActions(onSearch = { executeSearch(searchQuery) })
         )
 
+        // Sort Bar when search results are available
+        if (searchResults.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Sort:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                DownloaderSortOrder.entries.forEach { order ->
+                    FilterChip(
+                        selected = activeSortOrder == order,
+                        onClick = { activeSortOrder = order },
+                        label = {
+                            Text(
+                                text = "${order.emoji} ${order.label}",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+
         if (isSearching) {
             Box(
                 modifier = Modifier
@@ -262,59 +416,152 @@ fun DownloaderScreen(
                 }
             }
         } else if (searchResults.isEmpty()) {
-            // Empty state placeholder
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-                contentAlignment = Alignment.Center
+            // Empty state placeholder with Recent Searches history
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(64.dp)
+                if (searchHistory.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.CloudDownload,
+                                    imageVector = Icons.Default.History,
                                     contentDescription = null,
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Recent Searches",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    downloadManager.clearSearchHistory()
+                                    searchHistory = emptyList()
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Clear all",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            searchHistory.forEach { historyItem ->
+                                InputChip(
+                                    selected = false,
+                                    onClick = {
+                                        searchQuery = historyItem
+                                        executeSearch(historyItem)
+                                    },
+                                    label = {
+                                        Text(
+                                            text = historyItem,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.History,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clickable {
+                                                    downloadManager.removeSearchHistory(historyItem)
+                                                    searchHistory = downloadManager.getSearchHistory()
+                                                },
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = InputChipDefaults.inputChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
 
-                        // Title with 18.sp font size to prevent line-wrapping on all phone screens
-                        Text(
-                            text = "Save Music for Offline Play",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
                         )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(64.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(36.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                        Text(
-                            text = "Search songs, artists, or paste a link from YouTube / YouTube Music. Tracks are saved directly to your phone's Music folder in high quality (.m4a) for 100% offline playback anytime.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                            Text(
+                                text = "Save Music for Offline Play",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "Search songs, artists, or paste a link from YouTube / YouTube Music. Tracks are saved directly to your phone's Music folder in high quality (.m4a) for 100% offline playback anytime.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -325,9 +572,9 @@ fun DownloaderScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(searchResults, key = { it.id }) { track ->
-                    val progress = activeDownloads[track.id]
-                    val isDownloaded = completedDownloads[track.id] == true
+                items(sortedResults, key = { it.id }) { track ->
+                    val progress = activeDownloads[track.id] ?: serviceActiveDownloads[track.id]
+                    val isDownloaded = completedDownloads[track.id] == true || serviceCompletedTracks.contains(track.id)
 
                     YouTubeTrackItem(
                         track = track,
@@ -347,11 +594,12 @@ fun DownloaderScreen(
 
     // Track Action Dialog when song card is clicked
     selectedTrackForAction?.let { track ->
-        val progress = activeDownloads[track.id]
-        val isDownloaded = completedDownloads[track.id] == true
+        val progress = activeDownloads[track.id] ?: serviceActiveDownloads[track.id]
+        val isDownloaded = completedDownloads[track.id] == true || serviceCompletedTracks.contains(track.id)
 
         TrackActionDialog(
             track = track,
+            downloadManager = downloadManager,
             isDownloaded = isDownloaded,
             isDownloading = progress != null,
             isPreparingStream = isPreparingStream,
@@ -403,11 +651,70 @@ fun DownloaderScreen(
             }
         )
     }
+
+    // Confirmation dialog before downloading on mobile data or metered hotspot
+    if (trackPendingMobileConfirmation != null) {
+        val track = trackPendingMobileConfirmation!!
+        AlertDialog(
+            onDismissRequest = { trackPendingMobileConfirmation = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = "Download on Mobile Data?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "You are currently connected to mobile network.\n\nDownloading \"${track.title}\" will consume cellular data (~5–15 MB).\n\nWould you like to proceed?",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val t = track
+                        trackPendingMobileConfirmation = null
+                        performDownload(t)
+                    }
+                ) {
+                    Text("Download Once")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            val t = track
+                            networkPolicyManager.downloadNetworkMode = DownloadNetworkMode.ALWAYS_ALLOW
+                            trackPendingMobileConfirmation = null
+                            performDownload(t)
+                            Toast.makeText(context, "Network mode set to Always Allow in Settings", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Text("Always Allow")
+                    }
+                    TextButton(
+                        onClick = { trackPendingMobileConfirmation = null }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun TrackActionDialog(
     track: YouTubeTrack,
+    downloadManager: YouTubeDownloadManager,
     isDownloaded: Boolean,
     isDownloading: Boolean,
     isPreparingStream: Boolean,
@@ -417,6 +724,15 @@ private fun TrackActionDialog(
     onShare: () -> Unit,
     onOpenInBrowser: () -> Unit
 ) {
+    var detailedTrack by remember(track.id) { mutableStateOf(track) }
+
+    LaunchedEffect(track.id) {
+        if (track.likeCount < 0) {
+            val updated = downloadManager.fetchTrackDetails(track)
+            detailedTrack = updated
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier
@@ -442,10 +758,10 @@ private fun TrackActionDialog(
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    if (!track.thumbnailUrl.isNullOrBlank()) {
+                    if (!detailedTrack.thumbnailUrl.isNullOrBlank()) {
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
-                                .data(track.thumbnailUrl)
+                                .data(detailedTrack.thumbnailUrl)
                                 .crossfade(true)
                                 .build(),
                             contentDescription = "Thumbnail",
@@ -453,7 +769,7 @@ private fun TrackActionDialog(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
-                    if (track.durationSeconds > 0) {
+                    if (detailedTrack.durationSeconds > 0) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
@@ -462,7 +778,7 @@ private fun TrackActionDialog(
                                 .padding(8.dp)
                         ) {
                             Text(
-                                text = track.formattedDuration,
+                                text = detailedTrack.formattedDuration,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -476,7 +792,7 @@ private fun TrackActionDialog(
 
                 // Title & Channel
                 Text(
-                    text = track.title,
+                    text = detailedTrack.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -485,14 +801,89 @@ private fun TrackActionDialog(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = track.uploaderName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = detailedTrack.uploaderName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (detailedTrack.isUploaderVerified) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Verified Channel",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                // Stats badges: Views & Likes
+                if (detailedTrack.formattedViews != null || detailedTrack.formattedLikes != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        detailedTrack.formattedViews?.let { views ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Visibility,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = views,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        detailedTrack.formattedLikes?.let { likes ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ThumbUp,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = likes,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -669,13 +1060,72 @@ private fun YouTubeTrackItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = track.uploaderName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = track.uploaderName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (track.isUploaderVerified) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Verified Channel",
+                            modifier = Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                // Views and Likes Stats Row
+                if (track.formattedViews != null || track.formattedLikes != null) {
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        track.formattedViews?.let { views ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = views,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                )
+                            }
+                        }
+
+                        track.formattedLikes?.let { likes ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.ThumbUp,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = likes,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
+                }
 
                 if (downloadProgress != null) {
                     Spacer(modifier = Modifier.height(6.dp))
