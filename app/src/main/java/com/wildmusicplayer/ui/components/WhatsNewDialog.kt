@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🌐",
-                        title = "Offline & Online Mode Toggle",
-                        desc = "Switch between 100% offline local playback (zero background data) and online streaming & search with one tap."
+                        emoji = "🔊",
+                        title = "In-Player Volume & Snap Presets",
+                        desc = "Directly control volume from the player with instant Mute/Unmute and quick 25%, 50%, 75%, and 100% snap presets."
                     )
                     ChangelogItem(
-                        emoji = "🔀",
-                        title = "Hybrid Playlists",
-                        desc = "Add YouTube songs directly into custom playlists alongside your device MP3s for a unified music library."
+                        emoji = "🚀",
+                        title = "Decibel Boost (+dB Loudness)",
+                        desc = "Hardware DSP gain up to +12dB to amplify output beyond 100% for quiet recordings and low car Bluetooth signals."
                     )
                     ChangelogItem(
-                        emoji = "⚡",
-                        title = "1-Tap Sync Offline & Auto-Matching",
-                        desc = "Batch download online playlist songs in the background. Once downloaded, they automatically convert to local offline files."
+                        emoji = "⚖️",
+                        title = "Audio Normalization",
+                        desc = "Automatically levels playback volume across quiet and loud tracks to eliminate jarring volume jumps."
                     )
                     ChangelogItem(
-                        emoji = "🔍",
-                        title = "Smart Offline Filtering",
-                        desc = "Quickly filter playlists between Offline Ready and Hybrid collections, and filter tracks inside playlists."
+                        emoji = "⚙️",
+                        title = "Audio & Sound Effects Settings",
+                        desc = "New dedicated section in Settings to customize normalization, volume boost, and output levels anytime."
                     )
                 }
 

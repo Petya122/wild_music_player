@@ -41,6 +41,9 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val audioEffectsManager = com.wildmusicplayer.data.AudioEffectsManager.getInstance(this)
+        audioEffectsManager.attachPlayer(player)
+
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivityPendingIntent)
             .build()
@@ -51,6 +54,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        com.wildmusicplayer.data.AudioEffectsManager.getInstance(this).release()
         mediaSession?.run {
             player.release()
             release()
