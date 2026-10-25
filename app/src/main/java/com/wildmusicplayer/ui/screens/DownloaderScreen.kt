@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.OpenInBrowser
@@ -146,6 +147,8 @@ fun DownloaderScreen(
     controllerManager: MusicControllerManager,
     bottomPadding: Dp,
     onDownloadComplete: () -> Unit,
+    isOfflineOnlyMode: Boolean = false,
+    onSwitchToOnline: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -191,32 +194,39 @@ fun DownloaderScreen(
 
     // Direct search execution
     val executeSearch = { query: String ->
-        val trimmed = query.trim()
-        if (trimmed.isNotBlank()) {
-            focusManager.clearFocus()
-            isSearching = true
-            searchError = null
-            downloadManager.addSearchHistory(trimmed)
-            searchHistory = downloadManager.getSearchHistory()
+        if (isOfflineOnlyMode) {
+            Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to search.", Toast.LENGTH_SHORT).show()
+        } else {
+            val trimmed = query.trim()
+            if (trimmed.isNotBlank()) {
+                focusManager.clearFocus()
+                isSearching = true
+                searchError = null
+                downloadManager.addSearchHistory(trimmed)
+                searchHistory = downloadManager.getSearchHistory()
 
-            scope.launch {
-                try {
-                    val results = downloadManager.search(trimmed)
-                    searchResults = results
-                    if (results.isEmpty()) {
-                        searchError = "No songs found for '$trimmed'. Try another search term or paste a link."
+                scope.launch {
+                    try {
+                        val results = downloadManager.search(trimmed)
+                        searchResults = results
+                        if (results.isEmpty()) {
+                            searchError = "No songs found for '$trimmed'. Try another search term or paste a link."
+                        }
+                    } catch (e: Exception) {
+                        searchError = "Search failed: ${e.localizedMessage ?: "Unknown error"}"
+                    } finally {
+                        isSearching = false
                     }
-                } catch (e: Exception) {
-                    searchError = "Search failed: ${e.localizedMessage ?: "Unknown error"}"
-                } finally {
-                    isSearching = false
                 }
             }
         }
     }
 
     // Dynamic debounced search & instant clearing
-    LaunchedEffect(searchQuery) {
+    LaunchedEffect(searchQuery, isOfflineOnlyMode) {
+        if (isOfflineOnlyMode) {
+            return@LaunchedEffect
+        }
         val trimmed = searchQuery.trim()
         if (trimmed.isEmpty()) {
             searchResults = emptyList()
@@ -292,6 +302,9 @@ fun DownloaderScreen(
             is DownloadPrecondition.BlockedMetered -> {
                 Toast.makeText(context, "Downloads blocked on metered network (check Settings).", Toast.LENGTH_SHORT).show()
             }
+            is DownloadPrecondition.BlockedOfflineMode -> {
+                Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to download.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -300,6 +313,55 @@ fun DownloaderScreen(
             .fillMaxSize()
             .padding(bottom = bottomPadding)
     ) {
+        if (isOfflineOnlyMode) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Offline Only Mode Active",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Online searching and stream previews are paused to save mobile data and battery.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = onSwitchToOnline,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Go Online", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
         // Search Input Bar
         OutlinedTextField(
             value = searchQuery,
@@ -307,7 +369,7 @@ fun DownloaderScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
-            placeholder = { Text("Search song or paste YouTube link...") },
+            placeholder = { Text(if (isOfflineOnlyMode) "Offline Mode active (tap Go Online to search)" else "Search song or paste YouTube link...") },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,
@@ -609,21 +671,25 @@ fun DownloaderScreen(
                 }
             },
             onPlayOnline = {
-                isPreparingStream = true
-                scope.launch {
-                    val streamUrl = downloadManager.getStreamUrl(track)
-                    isPreparingStream = false
-                    if (!streamUrl.isNullOrBlank()) {
-                        controllerManager.playOnlineStream(
-                            title = track.title,
-                            artist = track.uploaderName,
-                            streamUrl = streamUrl,
-                            artworkUrl = track.thumbnailUrl
-                        )
-                        selectedTrackForAction = null
-                        Toast.makeText(context, "Streaming: ${track.title}", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Unable to extract audio stream for preview", Toast.LENGTH_LONG).show()
+                if (isOfflineOnlyMode) {
+                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to stream.", Toast.LENGTH_SHORT).show()
+                } else {
+                    isPreparingStream = true
+                    scope.launch {
+                        val streamUrl = downloadManager.getStreamUrl(track)
+                        isPreparingStream = false
+                        if (!streamUrl.isNullOrBlank()) {
+                            controllerManager.playOnlineStream(
+                                title = track.title,
+                                artist = track.uploaderName,
+                                streamUrl = streamUrl,
+                                artworkUrl = track.thumbnailUrl
+                            )
+                            selectedTrackForAction = null
+                            Toast.makeText(context, "Streaming: ${track.title}", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Unable to extract audio stream for preview", Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
             },

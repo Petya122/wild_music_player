@@ -16,6 +16,7 @@ sealed interface DownloadPrecondition {
     object Allowed : DownloadPrecondition
     object BlockedNoNetwork : DownloadPrecondition
     object BlockedMetered : DownloadPrecondition
+    object BlockedOfflineMode : DownloadPrecondition
     data class PromptMobileData(val isMetered: Boolean) : DownloadPrecondition
 }
 
@@ -25,10 +26,17 @@ class NetworkPolicyManager(private val context: Context) {
         context.getSharedPreferences("wild_music_player_prefs", Context.MODE_PRIVATE)
 
     companion object {
+        const val KEY_OFFLINE_ONLY_MODE = "key_offline_only_mode"
         const val KEY_DOWNLOAD_NETWORK_MODE = "key_download_network_mode"
         const val KEY_BLOCK_METERED_HOTSPOTS = "key_block_metered_hotspots"
         const val KEY_BACKGROUND_DOWNLOADS = "key_background_downloads"
     }
+
+    var isOfflineOnlyMode: Boolean
+        get() = prefs.getBoolean(KEY_OFFLINE_ONLY_MODE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_OFFLINE_ONLY_MODE, value).apply()
+        }
 
     var downloadNetworkMode: DownloadNetworkMode
         get() {
@@ -85,6 +93,10 @@ class NetworkPolicyManager(private val context: Context) {
     }
 
     fun checkDownloadPrecondition(): DownloadPrecondition {
+        if (isOfflineOnlyMode) {
+            return DownloadPrecondition.BlockedOfflineMode
+        }
+
         if (!isConnected()) {
             return DownloadPrecondition.BlockedNoNetwork
         }

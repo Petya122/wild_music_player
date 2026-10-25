@@ -32,13 +32,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
+import android.widget.Toast
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import com.wildmusicplayer.data.NetworkPolicyManager
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -161,7 +165,9 @@ fun MusicPlayerApp(
     val audioRepository = remember { AudioRepository(context) }
     val downloadManager = remember { YouTubeDownloadManager(context) }
     val updateChecker = remember { UpdateChecker(context) }
+    val networkPolicyManager = remember { NetworkPolicyManager(context) }
 
+    var isOfflineOnlyMode by remember { mutableStateOf(networkPolicyManager.isOfflineOnlyMode) }
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var hasPermission by remember { mutableStateOf(false) }
@@ -341,6 +347,55 @@ fun MusicPlayerApp(
                         }
                     },
                     actions = {
+                        // Quick Mode Toggle Pill (Online vs Offline)
+                        Surface(
+                            onClick = {
+                                val next = !isOfflineOnlyMode
+                                isOfflineOnlyMode = next
+                                networkPolicyManager.isOfflineOnlyMode = next
+                                val msg = if (next) {
+                                    "Switched to Offline Mode (Zero data usage, 100% local)"
+                                } else {
+                                    "Switched to Online Mode (Search & streaming unlocked)"
+                                }
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isOfflineOnlyMode) {
+                                MaterialTheme.colorScheme.tertiaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                            },
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (isOfflineOnlyMode) Icons.Default.CloudOff else Icons.Default.Cloud,
+                                    contentDescription = if (isOfflineOnlyMode) "Offline Mode" else "Online Mode",
+                                    tint = if (isOfflineOnlyMode) {
+                                        MaterialTheme.colorScheme.onTertiaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    },
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = if (isOfflineOnlyMode) "Offline" else "Online",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isOfflineOnlyMode) {
+                                        MaterialTheme.colorScheme.onTertiaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    }
+                                )
+                            }
+                        }
+
                         if (isSettingsOpen) {
                             IconButton(onClick = { showAboutDialog = true }) {
                                 Icon(
@@ -447,7 +502,18 @@ fun MusicPlayerApp(
                                 isSettingsOpen = false
                                 onExitApp()
                             },
-                            bottomPadding = contentBottomPadding
+                            bottomPadding = contentBottomPadding,
+                            isOfflineOnlyMode = isOfflineOnlyMode,
+                            onOfflineOnlyModeToggled = { enabled ->
+                                isOfflineOnlyMode = enabled
+                                networkPolicyManager.isOfflineOnlyMode = enabled
+                                val msg = if (enabled) {
+                                    "Switched to Offline Mode (Zero data usage, 100% local)"
+                                } else {
+                                    "Switched to Online Mode (Search & streaming unlocked)"
+                                }
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
                         )
                     } else {
                         when (currentTab) {
@@ -514,6 +580,12 @@ fun MusicPlayerApp(
                                     scope.launch {
                                         songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
                                     }
+                                },
+                                isOfflineOnlyMode = isOfflineOnlyMode,
+                                onSwitchToOnline = {
+                                    isOfflineOnlyMode = false
+                                    networkPolicyManager.isOfflineOnlyMode = false
+                                    Toast.makeText(context, "Switched to Online Mode", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }

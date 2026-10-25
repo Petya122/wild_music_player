@@ -20,7 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
@@ -82,6 +84,8 @@ fun SettingsScreen(
     onShowAbout: () -> Unit,
     onExitApp: () -> Unit,
     bottomPadding: Dp,
+    isOfflineOnlyMode: Boolean = false,
+    onOfflineOnlyModeToggled: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -742,6 +746,47 @@ fun SettingsScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Scaffolded Row: Offline Only Mode Switch
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOfflineOnlyModeToggled(!isOfflineOnlyMode) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isOfflineOnlyMode) Icons.Default.CloudOff else Icons.Default.Cloud,
+                                contentDescription = null,
+                                tint = if (isOfflineOnlyMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Offline Only Mode",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (isOfflineOnlyMode) "Zero network usage: Online search and streaming are paused" else "Disable online streaming and search for 100% offline, battery-saving listening",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isOfflineOnlyMode,
+                        onCheckedChange = onOfflineOnlyModeToggled
+                    )
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                )
 
                 // Scaffolded Row 1: Network Mode Picker
                 Row(
