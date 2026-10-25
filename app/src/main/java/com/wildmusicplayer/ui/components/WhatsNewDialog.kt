@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🧹",
-                        title = "Storage Sweep & APK Cleanup",
-                        desc = "Purges all legacy updater files from storage (~180 MB reclaimed) and automatically wipes the installer after updating."
+                        emoji = "🌐",
+                        title = "Offline & Online Mode Toggle",
+                        desc = "Switch between 100% offline local playback (zero background data) and online streaming & search with one tap."
                     )
                     ChangelogItem(
-                        emoji = "⏸️",
-                        title = "Update on Hold & Install Later",
-                        desc = "Downloaded updates can now be installed immediately or kept on hold, with no need to re-download."
+                        emoji = "🔀",
+                        title = "Hybrid Playlists",
+                        desc = "Add YouTube songs directly into custom playlists alongside your device MP3s for a unified music library."
                     )
                     ChangelogItem(
-                        emoji = "⚙️",
-                        title = "Auto-Prompt Install Toggle",
-                        desc = "Choose in Settings whether the app prompts to install immediately on download completion or holds it silently."
+                        emoji = "⚡",
+                        title = "1-Tap Sync Offline & Auto-Matching",
+                        desc = "Batch download online playlist songs in the background. Once downloaded, they automatically convert to local offline files."
                     )
                     ChangelogItem(
-                        emoji = "📥",
-                        title = "Background Song Downloads",
-                        desc = "Songs continue downloading when the app is tabbed out, locked, or closed, then shut down automatically."
+                        emoji = "🔍",
+                        title = "Smart Offline Filtering",
+                        desc = "Quickly filter playlists between Offline Ready and Hybrid collections, and filter tracks inside playlists."
                     )
                 }
 

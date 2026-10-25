@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import com.wildmusicplayer.model.Song
 
 data class OnlineTrack(
     val id: String,
@@ -233,6 +234,60 @@ class PlaylistRepository(context: Context) {
         }
         _customPlaylists.value = updated
         savePlaylists(updated)
+    }
+
+    /**
+     * Inspects all custom playlists containing online tracks.
+     * If an online track's title matches a downloaded local song,
+     * it migrates the track into [Playlist.songIds] as a native offline song
+     * and removes it from [Playlist.onlineTracks].
+     * Returns the total number of migrated tracks.
+     */
+    fun autoMigrateDownloadedTracks(localSongs: List<Song>): Int {
+        if (localSongs.isEmpty()) return 0
+        var migratedCount = 0
+        var anyChanged = false
+
+        val updated = _customPlaylists.value.map { playlist ->
+            if (playlist.onlineTracks.isEmpty()) {
+                playlist
+            } else {
+                val remainingOnline = mutableListOf<OnlineTrack>()
+                val newSongIds = playlist.songIds.toMutableList()
+
+                for (online in playlist.onlineTracks) {
+                    val cleanOnline = online.title.trim().lowercase()
+                    val match = localSongs.find { local ->
+                        val cleanLocal = local.title.trim().lowercase()
+                        cleanLocal == cleanOnline ||
+                        (cleanLocal.length >= 5 && cleanOnline.length >= 5 && 
+                            (cleanLocal.contains(cleanOnline) || cleanOnline.contains(cleanLocal)))
+                    }
+
+                    if (match != null) {
+                        if (!newSongIds.contains(match.id)) {
+                            newSongIds.add(match.id)
+                        }
+                        migratedCount++
+                        anyChanged = true
+                    } else {
+                        remainingOnline.add(online)
+                    }
+                }
+
+                if (remainingOnline.size != playlist.onlineTracks.size) {
+                    playlist.copy(songIds = newSongIds, onlineTracks = remainingOnline)
+                } else {
+                    playlist
+                }
+            }
+        }
+
+        if (anyChanged) {
+            _customPlaylists.value = updated
+            savePlaylists(updated)
+        }
+        return migratedCount
     }
 
     private fun savePlaylists(list: List<Playlist>) {

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
@@ -79,6 +80,18 @@ import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.service.SongDownloadService
 import kotlinx.coroutines.launch
 
+enum class PlaylistFilter(val label: String) {
+    ALL("All Playlists"),
+    OFFLINE_ONLY("Offline Ready"),
+    HYBRID("Hybrid (Cloud)")
+}
+
+enum class PlaylistDetailFilter(val label: String) {
+    ALL("All"),
+    LOCAL("Local"),
+    ONLINE("Online")
+}
+
 sealed class PlaylistSelection {
     data object None : PlaylistSelection()
     data object Favorites : PlaylistSelection()
@@ -107,6 +120,7 @@ fun PlaylistsScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var createMode by remember { mutableIntStateOf(0) } // 0 = From Folder, 1 = Custom Name
     var newPlaylistName by remember { mutableStateOf("") }
+    var overviewFilter by remember { mutableStateOf(PlaylistFilter.ALL) }
 
     val favoriteSongs = remember(allSongs, favoriteSongIds) {
         allSongs.filter { favoriteSongIds.contains(it.id) }
@@ -121,6 +135,22 @@ fun PlaylistsScreen(
 
     when (val selection = selectedPlaylist) {
         is PlaylistSelection.None -> {
+            val hybridCount = remember(customPlaylists) {
+                customPlaylists.count { it.onlineTracks.isNotEmpty() }
+            }
+            val offlineCount = remember(folderPlaylists, customPlaylists) {
+                folderPlaylists.size + 1 + customPlaylists.count { it.onlineTracks.isEmpty() }
+            }
+            val totalCount = folderPlaylists.size + 1 + customPlaylists.size
+
+            val filteredCustomPlaylists = remember(customPlaylists, overviewFilter) {
+                when (overviewFilter) {
+                    PlaylistFilter.ALL -> customPlaylists
+                    PlaylistFilter.OFFLINE_ONLY -> customPlaylists.filter { it.onlineTracks.isEmpty() }
+                    PlaylistFilter.HYBRID -> customPlaylists.filter { it.onlineTracks.isNotEmpty() }
+                }
+            }
+
             // Main Playlists Overview Screen
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -165,19 +195,73 @@ fun PlaylistsScreen(
                     }
                 }
 
-                // Built-in Favorites Playlist Card
+                // Filter Chips Row (All, Offline Ready, Hybrid Cloud)
                 item {
-                    PlaylistCard(
-                        title = "Favorite Songs",
-                        subtitle = "${favoriteSongs.size} tracks liked",
-                        icon = Icons.Default.Favorite,
-                        iconTint = MaterialTheme.colorScheme.primary,
-                        onClick = { selectedPlaylist = PlaylistSelection.Favorites }
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = (overviewFilter == PlaylistFilter.ALL),
+                            onClick = { overviewFilter = PlaylistFilter.ALL },
+                            label = { Text("All ($totalCount)") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                        FilterChip(
+                            selected = (overviewFilter == PlaylistFilter.OFFLINE_ONLY),
+                            onClick = { overviewFilter = PlaylistFilter.OFFLINE_ONLY },
+                            label = { Text("Offline ($offlineCount)") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                        FilterChip(
+                            selected = (overviewFilter == PlaylistFilter.HYBRID),
+                            onClick = { overviewFilter = PlaylistFilter.HYBRID },
+                            label = { Text("Hybrid ($hybridCount)") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                    }
                 }
 
-                // Device Music Folders Section (Automatic Folder Playlists like "Personal Favorite")
-                if (folderPlaylists.isNotEmpty()) {
+                // Built-in Favorites Playlist Card (Hidden if Hybrid filter is active)
+                if (overviewFilter != PlaylistFilter.HYBRID) {
+                    item {
+                        PlaylistCard(
+                            title = "Favorite Songs",
+                            subtitle = "${favoriteSongs.size} tracks liked",
+                            icon = Icons.Default.Favorite,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            onClick = { selectedPlaylist = PlaylistSelection.Favorites }
+                        )
+                    }
+                }
+
+                // Device Music Folders Section (Hidden if Hybrid filter is active)
+                if (overviewFilter != PlaylistFilter.HYBRID && folderPlaylists.isNotEmpty()) {
                     item {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
@@ -206,12 +290,50 @@ fun PlaylistsScreen(
                     }
                 }
 
-                // Custom Playlists Section
-                if (customPlaylists.isNotEmpty()) {
+                // Custom Playlists Section (Filtered by overviewFilter)
+                if (overviewFilter == PlaylistFilter.HYBRID && filteredCustomPlaylists.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No Hybrid Playlists Found",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Search YouTube in the Downloader tab and tap 'Add to Playlist' to create hybrid collections!",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+                } else if (filteredCustomPlaylists.isNotEmpty()) {
                     item {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Custom Playlists (${customPlaylists.size})",
+                            text = "Custom Playlists (${filteredCustomPlaylists.size})",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -219,7 +341,7 @@ fun PlaylistsScreen(
                         )
                     }
 
-                    items(customPlaylists, key = { it.id }) { playlist ->
+                    items(filteredCustomPlaylists, key = { it.id }) { playlist ->
                         val localCount = playlist.songIds.size
                         val onlineCount = playlist.onlineTracks.size
                         val totalCount = localCount + onlineCount
@@ -303,6 +425,7 @@ fun PlaylistsScreen(
                 subtitle = subtitle,
                 songs = playlistSongs,
                 onlineTracks = playlist.onlineTracks,
+                allSongs = allSongs,
                 favoriteSongIds = favoriteSongIds,
                 currentPlayingSongId = currentPlayingSongId,
                 bottomPadding = bottomPadding,
@@ -590,6 +713,7 @@ private fun PlaylistDetailView(
     onShuffleAll: () -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onlineTracks: List<OnlineTrack> = emptyList(),
+    allSongs: List<Song> = emptyList(),
     downloadManager: YouTubeDownloadManager? = null,
     controllerManager: MusicControllerManager? = null,
     networkPolicyManager: NetworkPolicyManager? = null,
@@ -597,6 +721,7 @@ private fun PlaylistDetailView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Detail Header
@@ -714,6 +839,44 @@ private fun PlaylistDetailView(
             }
         }
 
+        // Filter Chips Row for hybrid playlist (All, Local, Online)
+        if (onlineTracks.isNotEmpty() && songs.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = (detailFilter == PlaylistDetailFilter.ALL),
+                    onClick = { detailFilter = PlaylistDetailFilter.ALL },
+                    label = { Text("All (${songs.size + onlineTracks.size})") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+                FilterChip(
+                    selected = (detailFilter == PlaylistDetailFilter.LOCAL),
+                    onClick = { detailFilter = PlaylistDetailFilter.LOCAL },
+                    label = { Text("Local (${songs.size})") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+                FilterChip(
+                    selected = (detailFilter == PlaylistDetailFilter.ONLINE),
+                    onClick = { detailFilter = PlaylistDetailFilter.ONLINE },
+                    label = { Text("Online (${onlineTracks.size})") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+        }
+
         if (songs.isNotEmpty() || onlineTracks.isNotEmpty()) {
             if (songs.isNotEmpty()) {
                 Row(
@@ -723,7 +886,16 @@ private fun PlaylistDetailView(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Button(
-                        onClick = onPlayAll,
+                        onClick = {
+                            onPlayAll()
+                            if (onlineTracks.isNotEmpty()) {
+                                Toast.makeText(
+                                    context,
+                                    "Playing ${songs.size} offline tracks. Sync remaining ${onlineTracks.size} online tracks for complete offline listening.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -732,7 +904,16 @@ private fun PlaylistDetailView(
                         Text("Play All")
                     }
                     FilledTonalButton(
-                        onClick = onShuffleAll,
+                        onClick = {
+                            onShuffleAll()
+                            if (onlineTracks.isNotEmpty()) {
+                                Toast.makeText(
+                                    context,
+                                    "Shuffling ${songs.size} offline tracks. Sync remaining ${onlineTracks.size} online tracks for complete offline listening.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -747,7 +928,7 @@ private fun PlaylistDetailView(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = bottomPadding)
             ) {
-                if (songs.isNotEmpty()) {
+                if (songs.isNotEmpty() && (detailFilter == PlaylistDetailFilter.ALL || detailFilter == PlaylistDetailFilter.LOCAL)) {
                     if (onlineTracks.isNotEmpty()) {
                         item {
                             Text(
@@ -774,7 +955,7 @@ private fun PlaylistDetailView(
                     }
                 }
 
-                if (onlineTracks.isNotEmpty()) {
+                if (onlineTracks.isNotEmpty() && (detailFilter == PlaylistDetailFilter.ALL || detailFilter == PlaylistDetailFilter.ONLINE)) {
                     item {
                         Text(
                             text = "Online Stream Tracks (${onlineTracks.size})",
@@ -786,34 +967,48 @@ private fun PlaylistDetailView(
                     }
 
                     items(onlineTracks, key = { it.id }) { track ->
+                        val cleanOnline = track.title.trim().lowercase()
+                        val localMatch = allSongs.find { local ->
+                            val cleanLocal = local.title.trim().lowercase()
+                            cleanLocal == cleanOnline ||
+                            (cleanLocal.length >= 5 && cleanOnline.length >= 5 &&
+                                (cleanLocal.contains(cleanOnline) || cleanOnline.contains(cleanLocal)))
+                        }
+
                         OnlineTrackRowItem(
                             track = track,
+                            isLocallyAvailable = (localMatch != null),
                             onTrackClick = {
-                                val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
-                                if (isOffline) {
-                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to stream.", Toast.LENGTH_SHORT).show()
+                                if (localMatch != null) {
+                                    Toast.makeText(context, "Playing local offline audio: ${localMatch.title}", Toast.LENGTH_SHORT).show()
+                                    onSongClick(localMatch)
                                 } else {
-                                    if (downloadManager != null && controllerManager != null) {
-                                        Toast.makeText(context, "Extracting stream: ${track.title}...", Toast.LENGTH_SHORT).show()
-                                        scope.launch {
-                                            val ytTrack = YouTubeTrack(
-                                                id = track.id,
-                                                title = track.title,
-                                                uploaderName = track.artist,
-                                                durationSeconds = track.durationSeconds,
-                                                thumbnailUrl = track.thumbnailUrl,
-                                                webUrl = track.webUrl
-                                            )
-                                            val streamUrl = downloadManager.getStreamUrl(ytTrack)
-                                            if (!streamUrl.isNullOrBlank()) {
-                                                controllerManager.playOnlineStream(
+                                    val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
+                                    if (isOffline) {
+                                        Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to stream.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        if (downloadManager != null && controllerManager != null) {
+                                            Toast.makeText(context, "Extracting stream: ${track.title}...", Toast.LENGTH_SHORT).show()
+                                            scope.launch {
+                                                val ytTrack = YouTubeTrack(
+                                                    id = track.id,
                                                     title = track.title,
-                                                    artist = track.artist,
-                                                    streamUrl = streamUrl,
-                                                    artworkUrl = track.thumbnailUrl
+                                                    uploaderName = track.artist,
+                                                    durationSeconds = track.durationSeconds,
+                                                    thumbnailUrl = track.thumbnailUrl,
+                                                    webUrl = track.webUrl
                                                 )
-                                            } else {
-                                                Toast.makeText(context, "Unable to extract stream for playback", Toast.LENGTH_LONG).show()
+                                                val streamUrl = downloadManager.getStreamUrl(ytTrack)
+                                                if (!streamUrl.isNullOrBlank()) {
+                                                    controllerManager.playOnlineStream(
+                                                        title = track.title,
+                                                        artist = track.artist,
+                                                        streamUrl = streamUrl,
+                                                        artworkUrl = track.thumbnailUrl
+                                                    )
+                                                } else {
+                                                    Toast.makeText(context, "Unable to extract stream for playback", Toast.LENGTH_LONG).show()
+                                                }
                                             }
                                         }
                                     }
@@ -876,6 +1071,7 @@ private fun PlaylistDetailView(
 @Composable
 private fun OnlineTrackRowItem(
     track: OnlineTrack,
+    isLocallyAvailable: Boolean = false,
     onTrackClick: () -> Unit,
     onDownloadClick: () -> Unit,
     onRemoveClick: (() -> Unit)? = null
@@ -947,29 +1143,54 @@ private fun OnlineTrackRowItem(
                     Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                        color = if (isLocallyAvailable) {
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                        }
                     ) {
                         Text(
-                            text = "Online",
+                            text = if (isLocallyAvailable) "💾 Local Ready" else "🌐 Online",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = if (isLocallyAvailable) {
+                                MaterialTheme.colorScheme.onTertiaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            },
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
                     }
                 }
             }
 
-            // Download single track icon
-            IconButton(
-                onClick = onDownloadClick,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = "Download Offline",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
+            // Download / Check single track action
+            if (isLocallyAvailable) {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Downloaded to device",
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            } else {
+                IconButton(
+                    onClick = onDownloadClick,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Download Offline",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             // Remove from playlist

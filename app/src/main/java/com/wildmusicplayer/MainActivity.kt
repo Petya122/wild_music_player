@@ -82,6 +82,7 @@ import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
+import com.wildmusicplayer.service.SongDownloadService
 import com.wildmusicplayer.ui.components.AboutDialog
 import com.wildmusicplayer.ui.components.DraggablePlayerSheet
 import com.wildmusicplayer.ui.components.SongThumbnail
@@ -266,6 +267,23 @@ fun MusicPlayerApp(
     val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
     val recentlyPlayedIds by playlistRepository.recentlyPlayedIds.collectAsState()
     val customPlaylists by playlistRepository.customPlaylists.collectAsState()
+    val completedTrackIds by SongDownloadService.completedTrackIds.collectAsState()
+
+    // Whenever local songs reload, check if any online tracks in playlists can be migrated to local files
+    LaunchedEffect(songs) {
+        if (songs.isNotEmpty()) {
+            playlistRepository.autoMigrateDownloadedTracks(songs)
+        }
+    }
+
+    // Whenever a download finishes in background, refresh local library and migrate playlist tracks
+    LaunchedEffect(completedTrackIds) {
+        if (completedTrackIds.isNotEmpty() && hasPermission) {
+            delay(1200) // Allow MediaScanner to finish indexing the newly written file
+            songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
+            playlistRepository.autoMigrateDownloadedTracks(songs)
+        }
+    }
 
     var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
 
