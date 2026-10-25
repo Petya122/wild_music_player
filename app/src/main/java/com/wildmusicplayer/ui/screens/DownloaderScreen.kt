@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
@@ -69,6 +72,9 @@ import androidx.compose.runtime.setValue
 import com.wildmusicplayer.data.DownloadNetworkMode
 import com.wildmusicplayer.data.DownloadPrecondition
 import com.wildmusicplayer.data.NetworkPolicyManager
+import com.wildmusicplayer.data.OnlineTrack
+import com.wildmusicplayer.data.Playlist
+import com.wildmusicplayer.data.PlaylistRepository
 import com.wildmusicplayer.service.SongDownloadService
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -149,6 +155,7 @@ fun DownloaderScreen(
     onDownloadComplete: () -> Unit,
     isOfflineOnlyMode: Boolean = false,
     onSwitchToOnline: () -> Unit = {},
+    playlistRepository: PlaylistRepository? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -172,6 +179,7 @@ fun DownloaderScreen(
 
     val networkPolicyManager = remember { NetworkPolicyManager(context) }
     var trackPendingMobileConfirmation by remember { mutableStateOf<YouTubeTrack?>(null) }
+    var trackForPlaylistDialog by remember { mutableStateOf<YouTubeTrack?>(null) }
 
     // State for interactive song card action dialog
     var selectedTrackForAction by remember { mutableStateOf<YouTubeTrack?>(null) }
@@ -697,6 +705,10 @@ fun DownloaderScreen(
                 triggerDownload(track)
                 selectedTrackForAction = null
             },
+            onAddToPlaylist = {
+                trackForPlaylistDialog = track
+                selectedTrackForAction = null
+            },
             onShare = {
                 val sendIntent = Intent().apply {
                     action = Intent.ACTION_SEND
@@ -716,6 +728,17 @@ fun DownloaderScreen(
                 selectedTrackForAction = null
             }
         )
+    }
+
+    // Add to Playlist Dialog
+    trackForPlaylistDialog?.let { track ->
+        if (playlistRepository != null) {
+            AddToPlaylistDialog(
+                track = track,
+                playlistRepository = playlistRepository,
+                onDismiss = { trackForPlaylistDialog = null }
+            )
+        }
     }
 
     // Confirmation dialog before downloading on mobile data or metered hotspot
@@ -787,6 +810,7 @@ private fun TrackActionDialog(
     onDismiss: () -> Unit,
     onPlayOnline: () -> Unit,
     onDownload: () -> Unit,
+    onAddToPlaylist: () -> Unit,
     onShare: () -> Unit,
     onOpenInBrowser: () -> Unit
 ) {
@@ -1001,6 +1025,21 @@ private fun TrackActionDialog(
                             else -> "Download Offline (.m4a)"
                         }
                     )
+                }
+
+                // Action: Add to Playlist
+                OutlinedButton(
+                    onClick = onAddToPlaylist,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Add to Playlist")
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1241,4 +1280,199 @@ private fun YouTubeTrackItem(
             }
         }
     }
+}
+
+@Composable
+private fun AddToPlaylistDialog(
+    track: YouTubeTrack,
+    playlistRepository: PlaylistRepository,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val customPlaylists by playlistRepository.customPlaylists.collectAsState()
+    var showCreateField by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(text = "Add to Playlist", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+            ) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = track.uploaderName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (showCreateField) {
+                    OutlinedTextField(
+                        value = newPlaylistName,
+                        onValueChange = { newPlaylistName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Playlist name...") },
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = {
+                            showCreateField = false
+                            newPlaylistName = ""
+                        }) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Button(
+                            onClick = {
+                                val trimmed = newPlaylistName.trim()
+                                if (trimmed.isNotBlank()) {
+                                    val onlineTrack = OnlineTrack(
+                                        id = track.id,
+                                        title = track.title,
+                                        artist = track.uploaderName,
+                                        durationSeconds = track.durationSeconds,
+                                        thumbnailUrl = track.thumbnailUrl,
+                                        webUrl = track.webUrl
+                                    )
+                                    playlistRepository.createPlaylist(
+                                        name = trimmed,
+                                        onlineTracks = listOf(onlineTrack)
+                                    )
+                                    Toast.makeText(context, "Created '$trimmed' with track", Toast.LENGTH_SHORT).show()
+                                    showCreateField = false
+                                    newPlaylistName = ""
+                                }
+                            },
+                            enabled = newPlaylistName.trim().isNotBlank()
+                        ) {
+                            Text("Create & Add")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                } else {
+                    OutlinedButton(
+                        onClick = { showCreateField = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Create New Playlist")
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                if (customPlaylists.isEmpty() && !showCreateField) {
+                    Text(
+                        text = "No custom playlists yet. Create one above!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(customPlaylists, key = { it.id }) { playlist ->
+                            val isInPlaylist = playlistRepository.isOnlineTrackInPlaylist(playlist.id, track.id)
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val onlineTrack = OnlineTrack(
+                                            id = track.id,
+                                            title = track.title,
+                                            artist = track.uploaderName,
+                                            durationSeconds = track.durationSeconds,
+                                            thumbnailUrl = track.thumbnailUrl,
+                                            webUrl = track.webUrl
+                                        )
+                                        val added = playlistRepository.toggleOnlineTrackInPlaylist(playlist.id, onlineTrack)
+                                        val msg = if (added) {
+                                            "Added to '${playlist.name}'"
+                                        } else {
+                                            "Removed from '${playlist.name}'"
+                                        }
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isInPlaylist) {
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceContainer
+                                    }
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                        Text(
+                                            text = playlist.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${playlist.songIds.size + playlist.onlineTracks.size} tracks",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = if (isInPlaylist) Icons.Default.CheckCircle else Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = if (isInPlaylist) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
 }

@@ -22,10 +22,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import android.widget.Toast
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
@@ -57,8 +63,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.wildmusicplayer.data.DownloadPrecondition
+import com.wildmusicplayer.data.NetworkPolicyManager
+import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.data.Playlist
+import com.wildmusicplayer.data.YouTubeDownloadManager
+import com.wildmusicplayer.data.YouTubeTrack
 import com.wildmusicplayer.model.Song
+import com.wildmusicplayer.service.MusicControllerManager
+import com.wildmusicplayer.service.SongDownloadService
+import kotlinx.coroutines.launch
 
 sealed class PlaylistSelection {
     data object None : PlaylistSelection()
@@ -78,7 +97,11 @@ fun PlaylistsScreen(
     onPlayPlaylist: (List<Song>, shuffle: Boolean) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onCreatePlaylist: (name: String, songIds: List<Long>) -> Unit,
-    onDeletePlaylist: (String) -> Unit
+    onDeletePlaylist: (String) -> Unit,
+    downloadManager: YouTubeDownloadManager? = null,
+    controllerManager: MusicControllerManager? = null,
+    networkPolicyManager: NetworkPolicyManager? = null,
+    onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null
 ) {
     var selectedPlaylist by remember { mutableStateOf<PlaylistSelection>(PlaylistSelection.None) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -197,12 +220,19 @@ fun PlaylistsScreen(
                     }
 
                     items(customPlaylists, key = { it.id }) { playlist ->
-                        val trackCount = playlist.songIds.size
+                        val localCount = playlist.songIds.size
+                        val onlineCount = playlist.onlineTracks.size
+                        val totalCount = localCount + onlineCount
+                        val subtitle = if (onlineCount > 0) {
+                            "$totalCount tracks ($localCount local, $onlineCount online)"
+                        } else {
+                            "$totalCount ${if (totalCount == 1) "track" else "tracks"}"
+                        }
                         PlaylistCard(
                             title = playlist.name,
-                            subtitle = "$trackCount ${if (trackCount == 1) "track" else "tracks"}",
-                            icon = Icons.AutoMirrored.Filled.QueueMusic,
-                            iconTint = MaterialTheme.colorScheme.secondary,
+                            subtitle = subtitle,
+                            icon = if (onlineCount > 0) Icons.Default.CloudSync else Icons.AutoMirrored.Filled.QueueMusic,
+                            iconTint = if (onlineCount > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary,
                             trailingAction = {
                                 IconButton(onClick = { onDeletePlaylist(playlist.id) }) {
                                     Icon(
@@ -259,11 +289,20 @@ fun PlaylistsScreen(
             val playlistSongs = remember(allSongs, playlist.songIds) {
                 playlist.songIds.mapNotNull { id -> allSongs.find { it.id == id } }
             }
+            val localCount = playlistSongs.size
+            val onlineCount = playlist.onlineTracks.size
+            val totalCount = localCount + onlineCount
+            val subtitle = if (onlineCount > 0) {
+                "$totalCount tracks ($localCount local, $onlineCount online)"
+            } else {
+                "$totalCount tracks"
+            }
 
             PlaylistDetailView(
                 title = playlist.name,
-                subtitle = "${playlistSongs.size} tracks",
+                subtitle = subtitle,
                 songs = playlistSongs,
+                onlineTracks = playlist.onlineTracks,
                 favoriteSongIds = favoriteSongIds,
                 currentPlayingSongId = currentPlayingSongId,
                 bottomPadding = bottomPadding,
@@ -271,7 +310,13 @@ fun PlaylistsScreen(
                 onSongClick = { song -> onSongClick(song, playlistSongs) },
                 onPlayAll = { onPlayPlaylist(playlistSongs, false) },
                 onShuffleAll = { onPlayPlaylist(playlistSongs, true) },
-                onToggleFavorite = onToggleFavorite
+                onToggleFavorite = onToggleFavorite,
+                downloadManager = downloadManager,
+                controllerManager = controllerManager,
+                networkPolicyManager = networkPolicyManager,
+                onRemoveOnlineTrack = { trackId ->
+                    onRemoveOnlineTrack?.invoke(playlist.id, trackId)
+                }
             )
         }
     }
@@ -543,8 +588,16 @@ private fun PlaylistDetailView(
     onSongClick: (Song) -> Unit,
     onPlayAll: () -> Unit,
     onShuffleAll: () -> Unit,
-    onToggleFavorite: (Long) -> Unit
+    onToggleFavorite: (Long) -> Unit,
+    onlineTracks: List<OnlineTrack> = emptyList(),
+    downloadManager: YouTubeDownloadManager? = null,
+    controllerManager: MusicControllerManager? = null,
+    networkPolicyManager: NetworkPolicyManager? = null,
+    onRemoveOnlineTrack: ((String) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Detail Header
         Row(
@@ -578,30 +631,115 @@ private fun PlaylistDetailView(
             }
         }
 
-        if (songs.isNotEmpty()) {
-            Row(
+        // Hybrid Sync Offline Banner
+        if (onlineTracks.isNotEmpty()) {
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                )
             ) {
-                Button(
-                    onClick = onPlayAll,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Play All")
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Hybrid Playlist",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${onlineTracks.size} online ${if (onlineTracks.size == 1) "track" else "tracks"} can be synced for offline play.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
+                            if (isOffline) {
+                                Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to sync playlist.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            when (networkPolicyManager?.checkDownloadPrecondition()) {
+                                is DownloadPrecondition.BlockedOfflineMode -> {
+                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to sync playlist.", Toast.LENGTH_SHORT).show()
+                                }
+                                is DownloadPrecondition.BlockedNoNetwork -> {
+                                    Toast.makeText(context, "No internet connection available.", Toast.LENGTH_SHORT).show()
+                                }
+                                is DownloadPrecondition.BlockedMetered -> {
+                                    Toast.makeText(context, "Downloads blocked on metered network (check Settings).", Toast.LENGTH_SHORT).show()
+                                }
+                                else -> {
+                                    onlineTracks.forEach { ot ->
+                                        val ytTrack = YouTubeTrack(
+                                            id = ot.id,
+                                            title = ot.title,
+                                            uploaderName = ot.artist,
+                                            durationSeconds = ot.durationSeconds,
+                                            thumbnailUrl = ot.thumbnailUrl,
+                                            webUrl = ot.webUrl
+                                        )
+                                        SongDownloadService.startDownload(context, ytTrack)
+                                    }
+                                    Toast.makeText(context, "Syncing ${onlineTracks.size} tracks for offline playback in background...", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Sync All", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
-                FilledTonalButton(
-                    onClick = onShuffleAll,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
+            }
+        }
+
+        if (songs.isNotEmpty() || onlineTracks.isNotEmpty()) {
+            if (songs.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(imageVector = Icons.Default.Shuffle, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Shuffle")
+                    Button(
+                        onClick = onPlayAll,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Play All")
+                    }
+                    FilledTonalButton(
+                        onClick = onShuffleAll,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Shuffle, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Shuffle")
+                    }
                 }
             }
 
@@ -609,17 +747,113 @@ private fun PlaylistDetailView(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = bottomPadding)
             ) {
-                items(songs, key = { it.id }) { song ->
-                    val isCurrent = song.id == currentPlayingSongId
-                    val isFavorite = favoriteSongIds.contains(song.id)
+                if (songs.isNotEmpty()) {
+                    if (onlineTracks.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Local Tracks (${songs.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
 
-                    SongRowItem(
-                        song = song,
-                        isCurrent = isCurrent,
-                        isFavorite = isFavorite,
-                        onClick = { onSongClick(song) },
-                        onToggleFavorite = { onToggleFavorite(song.id) }
-                    )
+                    items(songs, key = { it.id }) { song ->
+                        val isCurrent = song.id == currentPlayingSongId
+                        val isFavorite = favoriteSongIds.contains(song.id)
+
+                        SongRowItem(
+                            song = song,
+                            isCurrent = isCurrent,
+                            isFavorite = isFavorite,
+                            onClick = { onSongClick(song) },
+                            onToggleFavorite = { onToggleFavorite(song.id) }
+                        )
+                    }
+                }
+
+                if (onlineTracks.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Online Stream Tracks (${onlineTracks.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                        )
+                    }
+
+                    items(onlineTracks, key = { it.id }) { track ->
+                        OnlineTrackRowItem(
+                            track = track,
+                            onTrackClick = {
+                                val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
+                                if (isOffline) {
+                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to stream.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    if (downloadManager != null && controllerManager != null) {
+                                        Toast.makeText(context, "Extracting stream: ${track.title}...", Toast.LENGTH_SHORT).show()
+                                        scope.launch {
+                                            val ytTrack = YouTubeTrack(
+                                                id = track.id,
+                                                title = track.title,
+                                                uploaderName = track.artist,
+                                                durationSeconds = track.durationSeconds,
+                                                thumbnailUrl = track.thumbnailUrl,
+                                                webUrl = track.webUrl
+                                            )
+                                            val streamUrl = downloadManager.getStreamUrl(ytTrack)
+                                            if (!streamUrl.isNullOrBlank()) {
+                                                controllerManager.playOnlineStream(
+                                                    title = track.title,
+                                                    artist = track.artist,
+                                                    streamUrl = streamUrl,
+                                                    artworkUrl = track.thumbnailUrl
+                                                )
+                                            } else {
+                                                Toast.makeText(context, "Unable to extract stream for playback", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            onDownloadClick = {
+                                val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
+                                if (isOffline) {
+                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to download.", Toast.LENGTH_SHORT).show()
+                                    return@OnlineTrackRowItem
+                                }
+                                when (networkPolicyManager?.checkDownloadPrecondition()) {
+                                    is DownloadPrecondition.BlockedOfflineMode -> {
+                                        Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to download.", Toast.LENGTH_SHORT).show()
+                                    }
+                                    is DownloadPrecondition.BlockedNoNetwork -> {
+                                        Toast.makeText(context, "No internet connection available.", Toast.LENGTH_SHORT).show()
+                                    }
+                                    is DownloadPrecondition.BlockedMetered -> {
+                                        Toast.makeText(context, "Downloads blocked on metered network (check Settings).", Toast.LENGTH_SHORT).show()
+                                    }
+                                    else -> {
+                                        val ytTrack = YouTubeTrack(
+                                            id = track.id,
+                                            title = track.title,
+                                            uploaderName = track.artist,
+                                            durationSeconds = track.durationSeconds,
+                                            thumbnailUrl = track.thumbnailUrl,
+                                            webUrl = track.webUrl
+                                        )
+                                        SongDownloadService.startDownload(context, ytTrack)
+                                        Toast.makeText(context, "Downloading in background: ${track.title}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            onRemoveClick = if (onRemoveOnlineTrack != null) {
+                                { onRemoveOnlineTrack(track.id) }
+                            } else null
+                        )
+                    }
                 }
             }
         } else {
@@ -634,6 +868,123 @@ private fun PlaylistDetailView(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OnlineTrackRowItem(
+    track: OnlineTrack,
+    onTrackClick: () -> Unit,
+    onDownloadClick: () -> Unit,
+    onRemoveClick: (() -> Unit)? = null
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable(onClick = onTrackClick),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Thumbnail
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(46.dp)
+            ) {
+                if (!track.thumbnailUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(track.thumbnailUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Thumbnail",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = track.artist,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    ) {
+                        Text(
+                            text = "Online",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
+
+            // Download single track icon
+            IconButton(
+                onClick = onDownloadClick,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Download Offline",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Remove from playlist
+            if (onRemoveClick != null) {
+                IconButton(
+                    onClick = onRemoveClick,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove from Playlist",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

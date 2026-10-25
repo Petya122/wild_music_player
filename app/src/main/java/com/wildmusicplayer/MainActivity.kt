@@ -568,7 +568,13 @@ fun MusicPlayerApp(
                                 onPlayPlaylist = playPlaylist,
                                 onToggleFavorite = { playlistRepository.toggleFavorite(it) },
                                 onCreatePlaylist = { name, songIds -> playlistRepository.createPlaylist(name, songIds) },
-                                onDeletePlaylist = { playlistRepository.deletePlaylist(it) }
+                                onDeletePlaylist = { playlistRepository.deletePlaylist(it) },
+                                downloadManager = downloadManager,
+                                controllerManager = controllerManager,
+                                networkPolicyManager = networkPolicyManager,
+                                onRemoveOnlineTrack = { playlistId, trackId ->
+                                    playlistRepository.removeOnlineTrackFromPlaylist(playlistId, trackId)
+                                }
                             )
                         }
                         NavigationTab.DOWNLOADER -> {
@@ -586,7 +592,8 @@ fun MusicPlayerApp(
                                     isOfflineOnlyMode = false
                                     networkPolicyManager.isOfflineOnlyMode = false
                                     Toast.makeText(context, "Switched to Online Mode", Toast.LENGTH_SHORT).show()
-                                }
+                                },
+                                playlistRepository = playlistRepository
                             )
                         }
                     }

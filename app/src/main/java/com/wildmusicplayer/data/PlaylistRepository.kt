@@ -9,10 +9,20 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+data class OnlineTrack(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val durationSeconds: Long = 0L,
+    val thumbnailUrl: String? = null,
+    val webUrl: String = ""
+)
+
 data class Playlist(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val songIds: List<Long> = emptyList(),
+    val onlineTracks: List<OnlineTrack> = emptyList(),
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -68,11 +78,31 @@ class PlaylistRepository(context: Context) {
                 for (j in 0 until songIdsArray.length()) {
                     songIds.add(songIdsArray.getLong(j))
                 }
+
+                val onlineTracksArray = obj.optJSONArray("onlineTracks") ?: JSONArray()
+                val onlineTracks = mutableListOf<OnlineTrack>()
+                for (k in 0 until onlineTracksArray.length()) {
+                    val trackObj = onlineTracksArray.optJSONObject(k)
+                    if (trackObj != null) {
+                        onlineTracks.add(
+                            OnlineTrack(
+                                id = trackObj.getString("id"),
+                                title = trackObj.getString("title"),
+                                artist = trackObj.optString("artist", "Unknown Artist"),
+                                durationSeconds = trackObj.optLong("durationSeconds", 0L),
+                                thumbnailUrl = trackObj.optString("thumbnailUrl").takeIf { it.isNotBlank() },
+                                webUrl = trackObj.optString("webUrl", "")
+                            )
+                        )
+                    }
+                }
+
                 list.add(
                     Playlist(
                         id = obj.getString("id"),
                         name = obj.getString("name"),
                         songIds = songIds,
+                        onlineTracks = onlineTracks,
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
                 )
@@ -128,8 +158,12 @@ class PlaylistRepository(context: Context) {
         prefs.edit().remove(KEY_RECENTLY_PLAYED).apply()
     }
 
-    fun createPlaylist(name: String, songIds: List<Long> = emptyList()): Playlist {
-        val newPlaylist = Playlist(name = name, songIds = songIds)
+    fun createPlaylist(
+        name: String,
+        songIds: List<Long> = emptyList(),
+        onlineTracks: List<OnlineTrack> = emptyList()
+    ): Playlist {
+        val newPlaylist = Playlist(name = name, songIds = songIds, onlineTracks = onlineTracks)
         val updated = _customPlaylists.value + newPlaylist
         _customPlaylists.value = updated
         savePlaylists(updated)
@@ -165,6 +199,42 @@ class PlaylistRepository(context: Context) {
         return _customPlaylists.value.find { it.id == playlistId }?.songIds?.contains(songId) == true
     }
 
+    fun isOnlineTrackInPlaylist(playlistId: String, trackId: String): Boolean {
+        return _customPlaylists.value.find { it.id == playlistId }?.onlineTracks?.any { it.id == trackId } == true
+    }
+
+    fun toggleOnlineTrackInPlaylist(playlistId: String, track: OnlineTrack): Boolean {
+        var added = false
+        val updated = _customPlaylists.value.map { playlist ->
+            if (playlist.id == playlistId) {
+                val tracks = playlist.onlineTracks.toMutableList()
+                val existingIndex = tracks.indexOfFirst { it.id == track.id }
+                if (existingIndex >= 0) {
+                    tracks.removeAt(existingIndex)
+                    added = false
+                } else {
+                    tracks.add(track)
+                    added = true
+                }
+                playlist.copy(onlineTracks = tracks)
+            } else playlist
+        }
+        _customPlaylists.value = updated
+        savePlaylists(updated)
+        return added
+    }
+
+    fun removeOnlineTrackFromPlaylist(playlistId: String, trackId: String) {
+        val updated = _customPlaylists.value.map { playlist ->
+            if (playlist.id == playlistId) {
+                val tracks = playlist.onlineTracks.filter { it.id != trackId }
+                playlist.copy(onlineTracks = tracks)
+            } else playlist
+        }
+        _customPlaylists.value = updated
+        savePlaylists(updated)
+    }
+
     private fun savePlaylists(list: List<Playlist>) {
         val jsonArray = JSONArray()
         list.forEach { p ->
@@ -175,6 +245,20 @@ class PlaylistRepository(context: Context) {
                 val songsArr = JSONArray()
                 p.songIds.forEach { songsArr.put(it) }
                 put("songIds", songsArr)
+
+                val onlineArr = JSONArray()
+                p.onlineTracks.forEach { ot ->
+                    val otObj = JSONObject().apply {
+                        put("id", ot.id)
+                        put("title", ot.title)
+                        put("artist", ot.artist)
+                        put("durationSeconds", ot.durationSeconds)
+                        put("thumbnailUrl", ot.thumbnailUrl ?: "")
+                        put("webUrl", ot.webUrl)
+                    }
+                    onlineArr.put(otObj)
+                }
+                put("onlineTracks", onlineArr)
             }
             jsonArray.put(obj)
         }
