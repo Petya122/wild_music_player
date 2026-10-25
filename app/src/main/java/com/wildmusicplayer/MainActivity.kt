@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -217,13 +218,21 @@ fun MusicPlayerApp(
     }
 
     LaunchedEffect(Unit) {
-        // Automatically clean up old update APKs left in cache
-        updateChecker.cleanOldApks()
-
         val lastSeenVersion = prefs.getString(KEY_LAST_SEEN_VERSION, null)
         val currentVersion = BuildConfig.VERSION_NAME
         val isNewVersion = lastSeenVersion != null && lastSeenVersion != currentVersion
         prefs.edit().putString(KEY_LAST_SEEN_VERSION, currentVersion).apply()
+
+        // Automatically clean up old update APKs:
+        // If a new version just booted, wipe everything (both old versions and the installer APK).
+        // Otherwise, sweep legacy files/Download/ while preserving any on-hold pending update.
+        val pendingUpdate = if (!isNewVersion) {
+            val updatesDir = File(context.cacheDir, "updates")
+            updatesDir.listFiles()?.firstOrNull { it.isFile && it.extension.equals("apk", ignoreCase = true) }
+        } else {
+            null
+        }
+        updateChecker.cleanOldApks(preserveFile = pendingUpdate)
 
         val granted = ContextCompat.checkSelfPermission(
             context,

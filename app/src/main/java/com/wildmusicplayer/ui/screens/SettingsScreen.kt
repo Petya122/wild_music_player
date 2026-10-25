@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import java.io.File
 import android.widget.Toast
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -96,6 +97,10 @@ fun SettingsScreen(
     var showPermissionsDialog by remember { mutableStateOf(false) }
     var cacheSizeBytes by remember { mutableStateOf<Long?>(null) }
     var isClearingCache by remember { mutableStateOf(false) }
+    var autoPromptInstall by remember { mutableStateOf(updateChecker.autoPromptInstall) }
+    var pendingInstallDialogFile by remember { mutableStateOf<File?>(null) }
+    var pendingInstallVersion by remember { mutableStateOf<String?>(null) }
+    var onHoldRefreshTrigger by remember { mutableStateOf(0) }
 
     val networkPolicyManager = remember { NetworkPolicyManager(context) }
     var downloadNetworkMode by remember { mutableStateOf(networkPolicyManager.downloadNetworkMode) }
@@ -378,8 +383,52 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                )
+
+                // Toggle: Auto-Prompt Install vs Keep on Hold
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val next = !autoPromptInstall
+                            autoPromptInstall = next
+                            updateChecker.autoPromptInstall = next
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(
+                            text = "Auto-Prompt Install After Download",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Ask to install immediately when download finishes, or keep ready on hold",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoPromptInstall,
+                        onCheckedChange = {
+                            autoPromptInstall = it
+                            updateChecker.autoPromptInstall = it
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
                 if (availableUpdate != null) {
                     val update = availableUpdate!!
+                    val downloadedFile = remember(availableUpdate, isDownloadingUpdate, onHoldRefreshTrigger) {
+                        updateChecker.getDownloadedUpdateFile(update.latestVersion)
+                    }
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
@@ -395,6 +444,7 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Spacer(modifier = Modifier.height(10.dp))
+
                             if (isDownloadingUpdate) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(
@@ -423,6 +473,53 @@ fun SettingsScreen(
                                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                                     )
                                 }
+                            } else if (downloadedFile != null) {
+                                // APK is already on disk and kept on hold!
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = "✅ Update ${update.latestVersion} is downloaded and ready on hold.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                updateChecker.triggerApkInstall(downloadedFile)
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.SystemUpdate,
+                                                contentDescription = null
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Install Update Now")
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                updateChecker.deleteDownloadedUpdate(update.latestVersion)
+                                                onHoldRefreshTrigger++
+                                                scope.launch {
+                                                    cacheSizeBytes = updateChecker.getCacheSizeBytes()
+                                                }
+                                                Toast.makeText(context, "Downloaded update removed", Toast.LENGTH_SHORT).show()
+                                            },
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete Download",
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             } else {
                                 Button(
                                     onClick = {
@@ -438,8 +535,19 @@ fun SettingsScreen(
                                                 }
                                             )
                                             isDownloadingUpdate = false
+                                            onHoldRefreshTrigger++
                                             if (apkFile != null) {
-                                                updateChecker.triggerApkInstall(apkFile)
+                                                cacheSizeBytes = updateChecker.getCacheSizeBytes()
+                                                if (autoPromptInstall) {
+                                                    pendingInstallDialogFile = apkFile
+                                                    pendingInstallVersion = update.latestVersion
+                                                } else {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Update downloaded! Kept on hold ready to install.",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
                                             } else {
                                                 updateStatusText = "Download failed. Please check internet connection."
                                             }
@@ -453,7 +561,7 @@ fun SettingsScreen(
                                         contentDescription = null
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Download & Install Update")
+                                    Text("Download Update")
                                 }
                             }
                         }
@@ -939,6 +1047,52 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showNetworkModeDialog = false }) {
                     Text("Close")
+                }
+            }
+        )
+    }
+
+    if (pendingInstallDialogFile != null) {
+        val file = pendingInstallDialogFile!!
+        AlertDialog(
+            onDismissRequest = { pendingInstallDialogFile = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = "Update Ready to Install 🎉",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Wild Music Player ${pendingInstallVersion ?: ""} has finished downloading.\n\nWould you like to install it now, or keep it on hold for later?",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingInstallDialogFile = null
+                        updateChecker.triggerApkInstall(file)
+                    }
+                ) {
+                    Text("Install Now")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        pendingInstallDialogFile = null
+                        Toast.makeText(context, "Update kept on hold. You can install it anytime from Settings.", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Keep on Hold")
                 }
             }
         )

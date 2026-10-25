@@ -2,7 +2,9 @@ package com.wildmusicplayer.data
 
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Environment
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,6 +29,15 @@ sealed interface UpdateResult {
 }
 
 class UpdateChecker(private val context: Context) {
+
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("wild_music_player_prefs", Context.MODE_PRIVATE)
+
+    var autoPromptInstall: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_PROMPT_INSTALL, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_AUTO_PROMPT_INSTALL, value).apply()
+        }
 
     private val apiUrl = "https://api.github.com/repos/Petya122/wild_music_player/releases/latest"
 
@@ -190,40 +201,105 @@ class UpdateChecker(private val context: Context) {
     }
 
     /**
-     * Deletes all downloaded APK files in context.cacheDir/updates/.
+     * Checks if a downloaded update APK already exists on disk and is ready to install.
+     */
+    fun getDownloadedUpdateFile(tagName: String): File? {
+        val cleanTag = tagName.trim()
+        val updatesDir = File(context.cacheDir, "updates")
+        val candidate = File(updatesDir, "wild_music_player-$cleanTag.apk")
+        return if (candidate.exists() && candidate.isFile && candidate.length() > 1024 * 1024) {
+            candidate
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Deletes a downloaded update APK from disk.
+     */
+    fun deleteDownloadedUpdate(tagName: String): Boolean {
+        val cleanTag = tagName.trim()
+        val updatesDir = File(context.cacheDir, "updates")
+        val candidate = File(updatesDir, "wild_music_player-$cleanTag.apk")
+        return if (candidate.exists()) candidate.delete() else false
+    }
+
+    /**
+     * Thoroughly sweeps all APK files across internal cache, files, and legacy external download dirs.
+     * Optionally preserves a currently pending APK if preserveFile is provided.
      * Returns total bytes freed.
      */
-    suspend fun cleanOldApks(): Long = withContext(Dispatchers.IO) {
+    suspend fun cleanOldApks(preserveFile: File? = null): Long = withContext(Dispatchers.IO) {
         var freedBytes = 0L
-        try {
-            val updatesDir = File(context.cacheDir, "updates")
-            if (updatesDir.exists() && updatesDir.isDirectory) {
-                updatesDir.listFiles()?.forEach { file ->
-                    if (file.isFile && file.extension.equals("apk", ignoreCase = true)) {
+
+        fun sweepFile(file: File) {
+            try {
+                if (file.isFile && file.extension.equals("apk", ignoreCase = true)) {
+                    val shouldPreserve = preserveFile != null &&
+                            try { file.canonicalPath == preserveFile.canonicalPath } catch (_: Exception) { file.absolutePath == preserveFile.absolutePath }
+                    if (!shouldPreserve) {
                         val len = file.length()
                         if (file.delete()) {
                             freedBytes += len
                         }
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
+        }
+
+        fun sweepDir(dir: File?, recursive: Boolean = true) {
+            if (dir == null || !dir.exists()) return
+            dir.listFiles()?.forEach { child ->
+                if (child.isDirectory && recursive) {
+                    sweepDir(child, recursive = true)
+                } else if (child.isFile) {
+                    sweepFile(child)
+                }
+            }
+        }
+
+        try {
+            // 1. Legacy external files download folder (e.g. Android/data/com.wildmusicplayer/files/Download/)
+            val legacyDownloads = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            sweepDir(legacyDownloads, recursive = false)
+
+            // 2. Entire external files root (for any stray apks)
+            val externalFiles = context.getExternalFilesDir(null)
+            sweepDir(externalFiles, recursive = true)
+
+            // 3. Cache updates directory
+            val updatesDir = File(context.cacheDir, "updates")
+            sweepDir(updatesDir, recursive = false)
+
+            // 4. Loose files in filesDir & cacheDir
+            sweepDir(context.filesDir, recursive = true)
+            sweepDir(context.cacheDir, recursive = true)
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
         freedBytes
     }
 
     /**
-     * Computes the total byte size of context.cacheDir recursively.
+     * Computes the total byte size of context.cacheDir and legacy downloads recursively.
      */
     suspend fun getCacheSizeBytes(): Long = withContext(Dispatchers.IO) {
-        getDirSize(context.cacheDir)
+        var total = getDirSize(context.cacheDir)
+        val legacyDownloads = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        if (legacyDownloads != null && legacyDownloads.exists()) {
+            total += getDirSize(legacyDownloads)
+        }
+        total
     }
 
     /**
-     * Purges all files and subdirectories inside context.cacheDir.
+     * Purges all files and subdirectories inside context.cacheDir and legacy APK downloads.
      */
     suspend fun clearAppCache(): Boolean = withContext(Dispatchers.IO) {
+        var success = true
         try {
             val cache = context.cacheDir
             if (cache.exists()) {
@@ -231,11 +307,23 @@ class UpdateChecker(private val context: Context) {
                     child.deleteRecursively()
                 }
             }
-            true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            success = false
         }
+        try {
+            val legacyDownloads = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            if (legacyDownloads != null && legacyDownloads.exists()) {
+                legacyDownloads.listFiles()?.forEach { child ->
+                    if (child.isFile && child.extension.equals("apk", ignoreCase = true)) {
+                        child.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        success
     }
 
     private fun getDirSize(dir: File?): Long {
@@ -253,6 +341,8 @@ class UpdateChecker(private val context: Context) {
     }
 
     companion object {
+        const val KEY_AUTO_PROMPT_INSTALL = "key_auto_prompt_install"
+
         fun formatFileSize(bytes: Long): String {
             if (bytes <= 0) return "0 KB"
             if (bytes < 1024) return "$bytes B"

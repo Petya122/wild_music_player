@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "📥",
-                        title = "Background Song Downloads",
-                        desc = "Downloads persist seamlessly when app is tabbed out, minimized, or screen is off—then automatically shuts off."
+                        emoji = "🧹",
+                        title = "Storage Sweep & APK Cleanup",
+                        desc = "Purges all legacy updater files from storage (~180 MB reclaimed) and automatically wipes the installer after updating."
                     )
                     ChangelogItem(
-                        emoji = "📶",
-                        title = "Network Download Rules",
-                        desc = "Choose Wi-Fi Only, Ask on Mobile Data, or Always Allow. Plus protection against metered hotspots."
+                        emoji = "⏸️",
+                        title = "Update on Hold & Install Later",
+                        desc = "Downloaded updates can now be installed immediately or kept on hold, with no need to re-download."
                     )
                     ChangelogItem(
                         emoji = "⚙️",
-                        title = "Scaffolded Settings UI",
-                        desc = "Clean, compact Settings organization with quick modal pickers to avoid long scrolling lists."
+                        title = "Auto-Prompt Install Toggle",
+                        desc = "Choose in Settings whether the app prompts to install immediately on download completion or holds it silently."
                     )
                     ChangelogItem(
-                        emoji = "🧹",
-                        title = "Storage & Cache Manager",
-                        desc = "View live cache size and clear temp files and old updates in one tap."
+                        emoji = "📥",
+                        title = "Background Song Downloads",
+                        desc = "Songs continue downloading when the app is tabbed out, locked, or closed, then shut down automatically."
                     )
                 }
 
