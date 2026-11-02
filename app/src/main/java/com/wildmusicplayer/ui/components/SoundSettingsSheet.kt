@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -245,35 +247,10 @@ fun SoundSettingsSheet(
             Spacer(modifier = Modifier.height(10.dp))
 
             // dB Boost Pre-sets
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // Short labels: five chips share one row, and the heading already says "dB"
-                val boostOptions = listOf(0 to "Off", 3 to "+3", 6 to "+6", 9 to "+9", 12 to "+12")
-                boostOptions.forEach { (db, label) ->
-                    val isSelected = boostDb == db
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { audioEffectsManager.setVolumeBoostDb(db) },
-                        label = {
-                            Text(
-                                text = label,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                maxLines = 1,
-                                softWrap = false,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
+            DbBoostSelector(
+                selectedDb = boostDb,
+                onSelect = { audioEffectsManager.setVolumeBoostDb(it) }
+            )
 
             Spacer(modifier = Modifier.height(20.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -303,6 +280,51 @@ fun SoundSettingsSheet(
                     checked = isNormEnabled,
                     onCheckedChange = { audioEffectsManager.setNormalizationEnabled(it) }
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Off / +3 / +6 / +9 / +12 dB boost picker, shared by this sheet and Settings.
+ * Compact buttons instead of chips, so all five labels fit on one line even in narrow cards.
+ */
+@Composable
+fun DbBoostSelector(
+    selectedDb: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val options = listOf(0 to "Off", 3 to "+3", 6 to "+6", 9 to "+9", 12 to "+12")
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        options.forEach { (db, label) ->
+            val selected = selectedDb == db
+            Surface(
+                onClick = { onSelect(db) },
+                shape = RoundedCornerShape(8.dp),
+                color = if (selected) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent,
+                border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onTertiaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
         }
     }

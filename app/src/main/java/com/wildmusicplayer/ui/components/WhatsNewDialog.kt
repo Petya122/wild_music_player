@@ -95,14 +95,14 @@ fun WhatsNewDialog(
                         desc = "A local song now only stands in for an online playlist track if the artist matches too, so a remix with the same title no longer replaces the original."
                     )
                     ChangelogItem(
-                        emoji = "🔊",
-                        title = "Tidier dB Boost Buttons",
-                        desc = "The boost buttons now read Off · +3 · +6 · +9 · +12 on one line instead of wrapping."
+                        emoji = "⬇️",
+                        title = "Download Progress in Playlists",
+                        desc = "Downloading an online track from a playlist now shows a progress bar and percentage right on the track."
                     )
                     ChangelogItem(
-                        emoji = "🚗",
-                        title = "Still New: Car Auto-Resume",
-                        desc = "Press Play on your car radio (or switch it to Media) and music continues where you stopped, even after the app was closed."
+                        emoji = "🔊",
+                        title = "dB Boost Buttons That Fit",
+                        desc = "Off · +3 · +6 · +9 · +12 now fit on one line in Settings too, not just in the player."
                     )
                 }
 

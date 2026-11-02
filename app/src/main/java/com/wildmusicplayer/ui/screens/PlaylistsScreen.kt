@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -45,6 +46,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -52,6 +54,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -740,6 +743,7 @@ private fun PlaylistDetailView(
 ) {
     val context = LocalContext.current
     var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
+    val activeDownloads by SongDownloadService.activeDownloads.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Detail Header
@@ -981,6 +985,7 @@ private fun PlaylistDetailView(
                         OnlineTrackRowItem(
                             track = track,
                             isLocallyAvailable = (localMatch != null),
+                            downloadProgress = activeDownloads[track.id],
                             onTrackClick = {
                                 if (localMatch != null) {
                                     Toast.makeText(context, "Playing local offline audio: ${localMatch.title}", Toast.LENGTH_SHORT).show()
@@ -1049,6 +1054,8 @@ private fun PlaylistDetailView(
 private fun OnlineTrackRowItem(
     track: OnlineTrack,
     isLocallyAvailable: Boolean = false,
+    // 0..1 while SongDownloadService is downloading this track, null otherwise
+    downloadProgress: Float? = null,
     onTrackClick: () -> Unit,
     onDownloadClick: () -> Unit,
     onRemoveClick: (() -> Unit)? = null
@@ -1138,10 +1145,41 @@ private fun OnlineTrackRowItem(
                         )
                     }
                 }
+                if (downloadProgress != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LinearProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${(downloadProgress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
 
             // Download / Check single track action
-            if (isLocallyAvailable) {
+            if (downloadProgress != null) {
+                Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                    if (downloadProgress > 0f) {
+                        CircularProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 3.dp
+                        )
+                    } else {
+                        // Waiting in the queue or extracting the stream
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
+                    }
+                }
+            } else if (isLocallyAvailable) {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),

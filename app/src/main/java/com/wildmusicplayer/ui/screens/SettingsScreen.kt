@@ -82,6 +82,7 @@ import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.UpdateInfo
 import com.wildmusicplayer.data.UpdateResult
 import com.wildmusicplayer.data.YouTubeDownloadManager
+import com.wildmusicplayer.ui.components.DbBoostSelector
 import com.wildmusicplayer.ui.components.PermissionsDialog
 import com.wildmusicplayer.ui.components.TagRepairDialog
 import com.wildmusicplayer.ui.theme.ThemeMode
@@ -496,35 +497,10 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Short labels: five chips share one row, and the heading already says "dB"
-                        val boostOptions = listOf(0 to "Off", 3 to "+3", 6 to "+6", 9 to "+9", 12 to "+12")
-                        boostOptions.forEach { (db, label) ->
-                            val isSelected = boostDb == db
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { audioEffectsManager.setVolumeBoostDb(db) },
-                                label = {
-                                    Text(
-                                        text = label,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                ),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
+                    DbBoostSelector(
+                        selectedDb = boostDb,
+                        onSelect = { audioEffectsManager.setVolumeBoostDb(it) }
+                    )
                 }
 
                 HorizontalDivider(

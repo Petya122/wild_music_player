@@ -343,10 +343,8 @@ private fun RepairRow(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                // Mode chips and buttons on separate rows so neither gets squeezed on narrow phones
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SearchMode.entries.forEach { option ->
                         FilterChip(
                             selected = mode == option,
@@ -354,9 +352,17 @@ private fun RepairRow(
                             label = { Text(option.label, maxLines = 1, softWrap = false) }
                         )
                     }
-                    Spacer(modifier = Modifier.weight(1f))
-                    TextButton(onClick = { searchOpen = false }) { Text("Cancel") }
-                    Button(onClick = { submitSearch() }, enabled = query.isNotBlank()) { Text("Search") }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { searchOpen = false }) { Text("Cancel", maxLines = 1, softWrap = false) }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = { submitSearch() }, enabled = query.isNotBlank()) {
+                        Text("Search", maxLines = 1, softWrap = false)
+                    }
                 }
             }
         }
