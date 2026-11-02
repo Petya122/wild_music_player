@@ -177,7 +177,7 @@ fun DownloaderScreen(
     val serviceActiveDownloads by SongDownloadService.activeDownloads.collectAsState()
     val serviceCompletedTracks by SongDownloadService.completedTrackIds.collectAsState()
 
-    val networkPolicyManager = remember { NetworkPolicyManager(context) }
+    val networkPolicyManager = remember { NetworkPolicyManager.getInstance(context) }
     var trackPendingMobileConfirmation by remember { mutableStateOf<YouTubeTrack?>(null) }
     var trackForPlaylistDialog by remember { mutableStateOf<YouTubeTrack?>(null) }
 

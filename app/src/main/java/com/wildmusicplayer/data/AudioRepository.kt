@@ -48,13 +48,6 @@ class AudioRepository(private val context: Context) {
 
         val collectionUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
-        val recordingRegex = Regex("""^\d{8}_\d{6}""")
-        val excludedKeywords = listOf(
-            "recording", "sound_recorder", "soundrecorder", "callrec", "call_rec",
-            "voice_rec", "voicerec", "voicenote", "voice note", "whatsapp", "telegram",
-            "viber", "messenger", "notification", "ringtone", "alarm", "system/media", ".thumbnails"
-        )
-
         context.contentResolver.query(
             collectionUri,
             projection,
@@ -100,17 +93,8 @@ class AudioRepository(private val context: Context) {
                     else -> "Music"
                 }
 
-                if (filterRecordings) {
-                    val pathLower = (rawData ?: "").lowercase()
-                    val folderLower = folderName.lowercase()
-                    val isExcludedPath = excludedKeywords.any { pathLower.contains(it) || folderLower.contains(it) }
-
-                    val isTimestampedRecording = recordingRegex.containsMatchIn(rawTitle) ||
-                            (rawData != null && recordingRegex.containsMatchIn(java.io.File(rawData).nameWithoutExtension))
-
-                    if (isExcludedPath || isTimestampedRecording) {
-                        continue
-                    }
+                if (filterRecordings && isLikelyRecording(rawTitle, rawData, folderName)) {
+                    continue
                 }
 
                 val contentUri = ContentUris.withAppendedId(collectionUri, id)
@@ -141,6 +125,29 @@ class AudioRepository(private val context: Context) {
     }
 }
 
+private val recordingRegex = Regex("""^\d{8}_\d{6}""")
+private val excludedKeywords = listOf(
+    "recording", "sound_recorder", "soundrecorder", "callrec", "call_rec",
+    "voice_rec", "voicerec", "voicenote", "voice note", "whatsapp", "telegram",
+    "viber", "messenger", "notification", "ringtone", "alarm", "system/media", ".thumbnails"
+)
+
+/**
+ * True for voice notes, call recordings, messenger audio and timestamp-named
+ * recordings (e.g. "20240131_142530"), which shouldn't show up as music.
+ */
+internal fun isLikelyRecording(title: String, path: String?, folderName: String): Boolean {
+    val pathLower = (path ?: "").lowercase()
+    val folderLower = folderName.lowercase()
+    val isExcludedPath = excludedKeywords.any { pathLower.contains(it) || folderLower.contains(it) }
+
+    val fileName = path?.substringAfterLast('/')?.substringBeforeLast('.')
+    val isTimestampedRecording = recordingRegex.containsMatchIn(title) ||
+            (fileName != null && recordingRegex.containsMatchIn(fileName))
+
+    return isExcludedPath || isTimestampedRecording
+}
+
 /**
  * Extension function to convert a domain [Song] to a Media3 [MediaItem]
  * with structured metadata for lock screens, notifications, and car Bluetooth AVRCP.
@@ -156,7 +163,7 @@ fun Song.toMediaItem(): MediaItem {
         .build()
 
     return MediaItem.Builder()
-        .setMediaId(id.toString())
+        .setMediaId(mediaId)
         .setUri(contentUri)
         .setMediaMetadata(metadata)
         .build()

@@ -28,7 +28,7 @@ sealed interface UpdateResult {
     data class Error(val message: String) : UpdateResult
 }
 
-class UpdateChecker(private val context: Context) {
+class UpdateChecker private constructor(private val context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("wild_music_player_prefs", Context.MODE_PRIVATE)
@@ -175,7 +175,11 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
-    fun triggerApkInstall(apkFile: File) {
+    /**
+     * Opens the system installer for [apkFile]. Pass the screen's [caller] context
+     * (an Activity) so the app can close itself while the update installs.
+     */
+    fun triggerApkInstall(apkFile: File, caller: Context = context) {
         if (!apkFile.exists()) return
 
         val apkUri = FileProvider.getUriForFile(
@@ -189,8 +193,8 @@ class UpdateChecker(private val context: Context) {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
 
-        context.startActivity(installIntent)
-        var act: android.content.Context? = context
+        caller.startActivity(installIntent)
+        var act: android.content.Context? = caller
         while (act is android.content.ContextWrapper) {
             if (act is android.app.Activity) {
                 act.finishAffinity()
@@ -343,6 +347,29 @@ class UpdateChecker(private val context: Context) {
     companion object {
         const val KEY_AUTO_PROMPT_INSTALL = "key_auto_prompt_install"
 
+        @Volatile
+        private var instance: UpdateChecker? = null
+
+        fun getInstance(context: Context): UpdateChecker {
+            return instance ?: synchronized(this) {
+                instance ?: UpdateChecker(context.applicationContext).also { instance = it }
+            }
+        }
+
+        internal fun isNewerVersion(remote: String, current: String): Boolean {
+            val remoteParts = remote.split(".").mapNotNull { it.toIntOrNull() }
+            val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }
+
+            val maxLength = maxOf(remoteParts.size, currentParts.size)
+            for (i in 0 until maxLength) {
+                val r = remoteParts.getOrElse(i) { 0 }
+                val c = currentParts.getOrElse(i) { 0 }
+                if (r > c) return true
+                if (r < c) return false
+            }
+            return false
+        }
+
         fun formatFileSize(bytes: Long): String {
             if (bytes <= 0) return "0 KB"
             if (bytes < 1024) return "$bytes B"
@@ -353,19 +380,5 @@ class UpdateChecker(private val context: Context) {
             val gb = mb / 1024.0
             return String.format(java.util.Locale.US, "%.2f GB", gb)
         }
-    }
-
-    private fun isNewerVersion(remote: String, current: String): Boolean {
-        val remoteParts = remote.split(".").mapNotNull { it.toIntOrNull() }
-        val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }
-
-        val maxLength = maxOf(remoteParts.size, currentParts.size)
-        for (i in 0 until maxLength) {
-            val r = remoteParts.getOrElse(i) { 0 }
-            val c = currentParts.getOrElse(i) { 0 }
-            if (r > c) return true
-            if (r < c) return false
-        }
-        return false
     }
 }

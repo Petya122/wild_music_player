@@ -32,6 +32,9 @@ class MusicControllerManager(private val context: Context) {
     // Cache of the active playlist for metadata/song resolution
     private var currentPlaylist: List<Song> = emptyList()
 
+    // Last command issued before the controller finished connecting (e.g. a tap right after launch)
+    private var pendingAction: ((MediaController) -> Unit)? = null
+
     private val _currentSong = MutableStateFlow<Song?>(null)
     val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
 
@@ -70,7 +73,21 @@ class MusicControllerManager(private val context: Context) {
                 _isConnected.value = true
                 syncPlayerState()
             }
+            mediaController?.let { controller ->
+                pendingAction?.invoke(controller)
+                pendingAction = null
+            }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    /** Runs [action] now, or right after the controller connects if it hasn't yet. */
+    private fun withController(action: (MediaController) -> Unit) {
+        val controller = mediaController
+        if (controller != null) {
+            action(controller)
+        } else {
+            pendingAction = action
+        }
     }
 
     private fun syncPlayerState() {
@@ -94,10 +111,9 @@ class MusicControllerManager(private val context: Context) {
             _currentSong.value = null
             return
         }
-        val songId = mediaItem.mediaId.toLongOrNull()
-        _currentSong.value = currentPlaylist.find { it.id == songId }
+        _currentSong.value = currentPlaylist.find { it.mediaId == mediaItem.mediaId }
             ?: Song(
-                id = songId ?: 0L,
+                id = mediaItem.mediaId.toLongOrNull() ?: Song.ONLINE_SONG_ID,
                 title = mediaItem.mediaMetadata.title?.toString() ?: "Unknown Title",
                 artist = mediaItem.mediaMetadata.artist?.toString() ?: "Unknown Artist",
                 album = mediaItem.mediaMetadata.albumTitle?.toString() ?: "Unknown Album",
@@ -108,35 +124,30 @@ class MusicControllerManager(private val context: Context) {
     }
 
     fun playSong(song: Song, playlist: List<Song>) {
-        val controller = mediaController ?: return
-        currentPlaylist = playlist
+        val startIndex = playlist.indexOfFirst { it.mediaId == song.mediaId }.coerceAtLeast(0)
+        playQueue(playlist, startIndex)
+    }
 
-        val mediaItems = playlist.map { it.toMediaItem() }
-        val startIndex = playlist.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+    /**
+     * Replaces the queue with [songs] and starts at [startIndex]. The queue may mix local files
+     * and online songs ([Song.fromOnline]); online stream URLs are resolved by PlaybackService.
+     */
+    fun playQueue(songs: List<Song>, startIndex: Int) {
+        if (songs.isEmpty()) return
+        currentPlaylist = songs
+        val mediaItems = songs.map { it.toMediaItem() }
+        val index = startIndex.coerceIn(0, songs.lastIndex)
 
-        controller.setMediaItems(mediaItems, startIndex, 0L)
-        controller.prepare()
-        controller.play()
+        withController { controller ->
+            controller.setMediaItems(mediaItems, index, 0L)
+            controller.prepare()
+            controller.play()
+        }
     }
 
     fun playOnlineStream(title: String, artist: String, streamUrl: String, artworkUrl: String? = null) {
-        val controller = mediaController ?: return
-        val metadata = androidx.media3.common.MediaMetadata.Builder()
-            .setTitle(title)
-            .setArtist(artist)
-            .setDisplayTitle(title)
-            .setArtworkUri(artworkUrl?.let { android.net.Uri.parse(it) })
-            .setIsPlayable(true)
-            .build()
-
-        val mediaItem = MediaItem.Builder()
-            .setMediaId("online_${System.currentTimeMillis()}")
-            .setUri(android.net.Uri.parse(streamUrl))
-            .setMediaMetadata(metadata)
-            .build()
-
         val virtualSong = Song(
-            id = -1L,
+            id = Song.ONLINE_SONG_ID,
             title = title,
             artist = artist,
             album = "YouTube Stream",
@@ -144,12 +155,8 @@ class MusicControllerManager(private val context: Context) {
             contentUri = android.net.Uri.parse(streamUrl),
             albumArtUri = artworkUrl?.let { android.net.Uri.parse(it) }
         )
-        currentPlaylist = listOf(virtualSong)
         _currentSong.value = virtualSong
-
-        controller.setMediaItem(mediaItem)
-        controller.prepare()
-        controller.play()
+        playQueue(listOf(virtualSong), 0)
     }
 
     fun togglePlayPause() {
@@ -208,6 +215,7 @@ class MusicControllerManager(private val context: Context) {
     }
 
     fun release() {
+        pendingAction = null
         stopProgressUpdates()
         mediaController?.release()
         mediaController = null

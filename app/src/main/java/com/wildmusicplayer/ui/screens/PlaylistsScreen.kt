@@ -64,7 +64,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
@@ -73,12 +72,10 @@ import com.wildmusicplayer.data.DownloadPrecondition
 import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.data.Playlist
-import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.data.YouTubeTrack
+import com.wildmusicplayer.data.titlesMatch
 import com.wildmusicplayer.model.Song
-import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.service.SongDownloadService
-import kotlinx.coroutines.launch
 
 enum class PlaylistFilter(val label: String) {
     ALL("All Playlists"),
@@ -111,8 +108,7 @@ fun PlaylistsScreen(
     onToggleFavorite: (Long) -> Unit,
     onCreatePlaylist: (name: String, songIds: List<Long>) -> Unit,
     onDeletePlaylist: (String) -> Unit,
-    downloadManager: YouTubeDownloadManager? = null,
-    controllerManager: MusicControllerManager? = null,
+    isOfflineOnlyMode: Boolean = false,
     networkPolicyManager: NetworkPolicyManager? = null,
     onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null
 ) {
@@ -411,6 +407,26 @@ fun PlaylistsScreen(
             val playlistSongs = remember(allSongs, playlist.songIds) {
                 playlist.songIds.mapNotNull { id -> allSongs.find { it.id == id } }
             }
+
+            // One queue for the whole playlist: local songs, then online tracks (the downloaded copy
+            // if there is one, otherwise streamed). Undownloaded online tracks are skipped offline.
+            val playQueue = remember(allSongs, playlistSongs, playlist.onlineTracks, isOfflineOnlyMode) {
+                val onlineSongs = playlist.onlineTracks.mapNotNull { track ->
+                    val localMatch = allSongs.find { titlesMatch(it.title, track.title) }
+                    when {
+                        localMatch != null -> localMatch
+                        isOfflineOnlyMode -> null
+                        else -> Song.fromOnline(
+                            title = track.title,
+                            artist = track.artist,
+                            webUrl = track.webUrl,
+                            durationSeconds = track.durationSeconds,
+                            thumbnailUrl = track.thumbnailUrl
+                        )
+                    }
+                }
+                (playlistSongs + onlineSongs).distinctBy { it.mediaId }
+            }
             val localCount = playlistSongs.size
             val onlineCount = playlist.onlineTracks.size
             val totalCount = localCount + onlineCount
@@ -430,13 +446,16 @@ fun PlaylistsScreen(
                 currentPlayingSongId = currentPlayingSongId,
                 bottomPadding = bottomPadding,
                 onBack = { selectedPlaylist = PlaylistSelection.None },
-                onSongClick = { song -> onSongClick(song, playlistSongs) },
-                onPlayAll = { onPlayPlaylist(playlistSongs, false) },
-                onShuffleAll = { onPlayPlaylist(playlistSongs, true) },
+                onSongClick = { song -> onSongClick(song, playQueue) },
+                onPlayAll = { onPlayPlaylist(playQueue, false) },
+                onShuffleAll = { onPlayPlaylist(playQueue, true) },
                 onToggleFavorite = onToggleFavorite,
-                downloadManager = downloadManager,
-                controllerManager = controllerManager,
+                isOfflineOnlyMode = isOfflineOnlyMode,
                 networkPolicyManager = networkPolicyManager,
+                onPlayOnlineTrack = { track ->
+                    val song = playQueue.firstOrNull { Song.webUrlOf(it.contentUri) == track.webUrl }
+                    if (song != null) onSongClick(song, playQueue)
+                },
                 onRemoveOnlineTrack = { trackId ->
                     onRemoveOnlineTrack?.invoke(playlist.id, trackId)
                 }
@@ -714,13 +733,12 @@ private fun PlaylistDetailView(
     onToggleFavorite: (Long) -> Unit,
     onlineTracks: List<OnlineTrack> = emptyList(),
     allSongs: List<Song> = emptyList(),
-    downloadManager: YouTubeDownloadManager? = null,
-    controllerManager: MusicControllerManager? = null,
+    isOfflineOnlyMode: Boolean = false,
     networkPolicyManager: NetworkPolicyManager? = null,
+    onPlayOnlineTrack: ((OnlineTrack) -> Unit)? = null,
     onRemoveOnlineTrack: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -878,49 +896,40 @@ private fun PlaylistDetailView(
         }
 
         if (songs.isNotEmpty() || onlineTracks.isNotEmpty()) {
-            if (songs.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+            // Online tracks join the queue unless Offline Only Mode is on
+            val offlineSkipNotice = if (isOfflineOnlyMode && onlineTracks.isNotEmpty()) {
+                "Offline Only Mode is active: online tracks that aren't downloaded are skipped."
+            } else null
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        onPlayAll()
+                        offlineSkipNotice?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            onPlayAll()
-                            if (onlineTracks.isNotEmpty()) {
-                                Toast.makeText(
-                                    context,
-                                    "Playing ${songs.size} offline tracks. Sync remaining ${onlineTracks.size} online tracks for complete offline listening.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Play All")
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            onShuffleAll()
-                            if (onlineTracks.isNotEmpty()) {
-                                Toast.makeText(
-                                    context,
-                                    "Shuffling ${songs.size} offline tracks. Sync remaining ${onlineTracks.size} online tracks for complete offline listening.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Shuffle, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Shuffle")
-                    }
+                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Play All")
+                }
+                FilledTonalButton(
+                    onClick = {
+                        onShuffleAll()
+                        offlineSkipNotice?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Shuffle, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Shuffle")
                 }
             }
 
@@ -967,13 +976,7 @@ private fun PlaylistDetailView(
                     }
 
                     items(onlineTracks, key = { it.id }) { track ->
-                        val cleanOnline = track.title.trim().lowercase()
-                        val localMatch = allSongs.find { local ->
-                            val cleanLocal = local.title.trim().lowercase()
-                            cleanLocal == cleanOnline ||
-                            (cleanLocal.length >= 5 && cleanOnline.length >= 5 &&
-                                (cleanLocal.contains(cleanOnline) || cleanOnline.contains(cleanLocal)))
-                        }
+                        val localMatch = allSongs.find { local -> titlesMatch(local.title, track.title) }
 
                         OnlineTrackRowItem(
                             track = track,
@@ -982,36 +985,10 @@ private fun PlaylistDetailView(
                                 if (localMatch != null) {
                                     Toast.makeText(context, "Playing local offline audio: ${localMatch.title}", Toast.LENGTH_SHORT).show()
                                     onSongClick(localMatch)
+                                } else if (isOfflineOnlyMode) {
+                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to stream.", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
-                                    if (isOffline) {
-                                        Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to stream.", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        if (downloadManager != null && controllerManager != null) {
-                                            Toast.makeText(context, "Extracting stream: ${track.title}...", Toast.LENGTH_SHORT).show()
-                                            scope.launch {
-                                                val ytTrack = YouTubeTrack(
-                                                    id = track.id,
-                                                    title = track.title,
-                                                    uploaderName = track.artist,
-                                                    durationSeconds = track.durationSeconds,
-                                                    thumbnailUrl = track.thumbnailUrl,
-                                                    webUrl = track.webUrl
-                                                )
-                                                val streamUrl = downloadManager.getStreamUrl(ytTrack)
-                                                if (!streamUrl.isNullOrBlank()) {
-                                                    controllerManager.playOnlineStream(
-                                                        title = track.title,
-                                                        artist = track.artist,
-                                                        streamUrl = streamUrl,
-                                                        artworkUrl = track.thumbnailUrl
-                                                    )
-                                                } else {
-                                                    Toast.makeText(context, "Unable to extract stream for playback", Toast.LENGTH_LONG).show()
-                                                }
-                                            }
-                                        }
-                                    }
+                                    onPlayOnlineTrack?.invoke(track)
                                 }
                             },
                             onDownloadClick = {

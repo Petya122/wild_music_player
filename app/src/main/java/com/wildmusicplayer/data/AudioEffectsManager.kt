@@ -77,7 +77,7 @@ class AudioEffectsManager private constructor(context: Context) {
     }
 
     fun setVolumeBoostDb(db: Int) {
-        val clamped = db.coerceIn(0, 15)
+        val clamped = db.coerceIn(0, MAX_BOOST_DB)
         _volumeBoostDb.value = clamped
         prefs.edit().putInt(KEY_BOOST_DB, clamped).apply()
         applyDspEnhancements()
@@ -146,6 +146,9 @@ class AudioEffectsManager private constructor(context: Context) {
         private const val KEY_LAST_UNMUTED_VOL = "pref_last_unmuted_vol"
         private const val KEY_BOOST_DB = "pref_volume_boost_db"
         private const val KEY_NORMALIZATION = "pref_audio_normalization"
+
+        // Matches the largest preset offered in SoundSettingsSheet
+        const val MAX_BOOST_DB = 12
 
         @Volatile
         private var instance: AudioEffectsManager? = null

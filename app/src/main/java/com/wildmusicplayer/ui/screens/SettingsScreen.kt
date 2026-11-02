@@ -101,7 +101,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val updateChecker = remember { UpdateChecker(context) }
+    val updateChecker = remember { UpdateChecker.getInstance(context) }
     val scrollState = rememberScrollState()
 
     var isCheckingUpdates by remember { mutableStateOf(false) }
@@ -117,7 +117,7 @@ fun SettingsScreen(
     var pendingInstallVersion by remember { mutableStateOf<String?>(null) }
     var onHoldRefreshTrigger by remember { mutableStateOf(0) }
 
-    val networkPolicyManager = remember { NetworkPolicyManager(context) }
+    val networkPolicyManager = remember { NetworkPolicyManager.getInstance(context) }
     var downloadNetworkMode by remember { mutableStateOf(networkPolicyManager.downloadNetworkMode) }
     var blockMeteredHotspots by remember { mutableStateOf(networkPolicyManager.blockMeteredHotspots) }
     var backgroundDownloads by remember { mutableStateOf(networkPolicyManager.backgroundDownloads) }
@@ -693,7 +693,7 @@ fun SettingsScreen(
                                     ) {
                                         Button(
                                             onClick = {
-                                                updateChecker.triggerApkInstall(downloadedFile)
+                                                updateChecker.triggerApkInstall(downloadedFile, context)
                                             },
                                             shape = RoundedCornerShape(10.dp),
                                             modifier = Modifier.weight(1f)
@@ -1324,7 +1324,7 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         pendingInstallDialogFile = null
-                        updateChecker.triggerApkInstall(file)
+                        updateChecker.triggerApkInstall(file, context)
                     }
                 ) {
                     Text("Install Now")

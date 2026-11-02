@@ -20,8 +20,8 @@ android {
         applicationId = "com.wildmusicplayer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "0.5.1"
+        versionCode = 26
+        versionName = "0.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -40,7 +40,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
@@ -73,8 +74,6 @@ kotlin {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
 
     // AndroidX Media3 (ExoPlayer + Bluetooth MediaSession)
     implementation(libs.androidx.media3.exoplayer)
@@ -94,8 +93,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     // Networking & YouTube Extraction
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
+    implementation(libs.okhttp)
+    implementation(libs.newpipe.extractor)
 
 
     testImplementation(libs.junit)

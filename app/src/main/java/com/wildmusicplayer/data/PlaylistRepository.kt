@@ -256,13 +256,7 @@ class PlaylistRepository(context: Context) {
                 val newSongIds = playlist.songIds.toMutableList()
 
                 for (online in playlist.onlineTracks) {
-                    val cleanOnline = online.title.trim().lowercase()
-                    val match = localSongs.find { local ->
-                        val cleanLocal = local.title.trim().lowercase()
-                        cleanLocal == cleanOnline ||
-                        (cleanLocal.length >= 5 && cleanOnline.length >= 5 && 
-                            (cleanLocal.contains(cleanOnline) || cleanOnline.contains(cleanLocal)))
-                    }
+                    val match = localSongs.find { local -> titlesMatch(local.title, online.title) }
 
                     if (match != null) {
                         if (!newSongIds.contains(match.id)) {

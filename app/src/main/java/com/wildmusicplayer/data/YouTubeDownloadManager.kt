@@ -18,10 +18,14 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -186,13 +190,7 @@ class YouTubeDownloadManager(private val context: Context) {
                     trimmed.contains("youtu.be/", ignoreCase = true)
 
             if (isUrl) {
-                var cleanUrl = trimmed
-                if (!cleanUrl.startsWith("http://", ignoreCase = true) && !cleanUrl.startsWith("https://", ignoreCase = true)) {
-                    cleanUrl = "https://$cleanUrl"
-                }
-                // Normalize YouTube Music to standard YouTube for stream extraction
-                cleanUrl = cleanUrl.replace("music.youtube.com", "www.youtube.com")
-
+                val cleanUrl = normalizeUrl(trimmed)
                 val streamInfo = StreamInfo.getInfo(cleanUrl)
                 return@withContext listOf(
                     YouTubeTrack(
@@ -237,12 +235,7 @@ class YouTubeDownloadManager(private val context: Context) {
     suspend fun fetchTrackDetails(track: YouTubeTrack): YouTubeTrack = withContext(Dispatchers.IO) {
         ensureInitialized()
         try {
-            var targetUrl = track.webUrl
-            if (!targetUrl.startsWith("http://", ignoreCase = true) && !targetUrl.startsWith("https://", ignoreCase = true)) {
-                targetUrl = "https://$targetUrl"
-            }
-            targetUrl = targetUrl.replace("music.youtube.com", "www.youtube.com")
-            val streamInfo = StreamInfo.getInfo(targetUrl)
+            val streamInfo = StreamInfo.getInfo(normalizeUrl(track.webUrl))
             track.copy(
                 viewCount = if (streamInfo.viewCount >= 0) streamInfo.viewCount else track.viewCount,
                 likeCount = streamInfo.likeCount,
@@ -260,106 +253,91 @@ class YouTubeDownloadManager(private val context: Context) {
     ): Result<String> = withContext(Dispatchers.IO) {
         ensureInitialized()
         try {
-            val streamInfo = StreamInfo.getInfo(track.webUrl)
-            val audioStreams = streamInfo.audioStreams
-            if (audioStreams.isNullOrEmpty()) {
-                return@withContext Result.failure(Exception("No audio streams found for this track."))
-            }
-
-            // Prefer M4A / AAC format with highest bitrate
-            val bestAudioStream = audioStreams
-                .filter { it.format?.name?.contains("m4a", ignoreCase = true) == true }
-                .maxByOrNull { it.averageBitrate }
-                ?: audioStreams.maxByOrNull { it.averageBitrate }
-                ?: audioStreams.first()
+            val streamInfo = StreamInfo.getInfo(normalizeUrl(track.webUrl))
+            val bestAudioStream = pickBestAudioStream(streamInfo.audioStreams)
+                ?: return@withContext Result.failure(Exception("No audio streams found for this track."))
 
             val streamUrl = bestAudioStream.content
                 ?: return@withContext Result.failure(Exception("Audio stream URL is unavailable."))
 
-            val cleanTitle = track.title.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
-            val fileName = "$cleanTitle.m4a"
+            val baseName = sanitizeFileName(track.title)
 
             val request = OkHttpRequest.Builder()
                 .url(streamUrl)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(Exception("Failed to download audio stream (HTTP ${response.code})"))
-            }
-
-            val body = response.body ?: return@withContext Result.failure(Exception("Empty response body"))
-            val totalBytes = body.contentLength()
-            var downloadedBytes = 0L
-
-            var savedPath: String? = null
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
-                    put(MediaStore.Audio.Media.TITLE, track.title)
-                    put(MediaStore.Audio.Media.ARTIST, track.uploaderName)
-                    put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
-                    put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/WildMusic")
-                    put(MediaStore.Audio.Media.IS_PENDING, 1)
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(Exception("Failed to download audio stream (HTTP ${response.code})"))
                 }
 
-                val uri = context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
-                    ?: return@withContext Result.failure(Exception("Failed to create MediaStore entry"))
+                val body = response.body ?: return@withContext Result.failure(Exception("Empty response body"))
+                val totalBytes = body.contentLength()
 
-                context.contentResolver.openOutputStream(uri)?.use { output ->
-                    body.byteStream().use { input ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            downloadedBytes += bytesRead
-                            if (totalBytes > 0) {
-                                onProgress(downloadedBytes.toFloat() / totalBytes.toFloat())
-                            }
-                        }
+                val savedPath = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // MediaStore de-duplicates DISPLAY_NAME itself ("Title (1).m4a")
+                    val fileName = "$baseName.m4a"
+                    val resolver = context.contentResolver
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
+                        put(MediaStore.Audio.Media.TITLE, track.title)
+                        put(MediaStore.Audio.Media.ARTIST, track.uploaderName)
+                        put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
+                        put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/WildMusic")
+                        put(MediaStore.Audio.Media.IS_PENDING, 1)
                     }
-                }
 
-                contentValues.clear()
-                contentValues.put(MediaStore.Audio.Media.IS_PENDING, 0)
-                context.contentResolver.update(uri, contentValues, null, null)
+                    val uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
+                        ?: return@withContext Result.failure(Exception("Failed to create MediaStore entry"))
 
-                savedPath = "${Environment.DIRECTORY_MUSIC}/WildMusic/$fileName"
-            } else {
-                val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "WildMusic")
-                if (!musicDir.exists()) {
-                    musicDir.mkdirs()
-                }
-                val targetFile = File(musicDir, fileName)
-
-                FileOutputStream(targetFile).use { output ->
-                    body.byteStream().use { input ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            downloadedBytes += bytesRead
-                            if (totalBytes > 0) {
-                                onProgress(downloadedBytes.toFloat() / totalBytes.toFloat())
-                            }
+                    try {
+                        val output = resolver.openOutputStream(uri)
+                            ?: throw IOException("Failed to open MediaStore output stream")
+                        output.use { out ->
+                            body.byteStream().use { input -> copyWithProgress(input, out, totalBytes, onProgress) }
                         }
+
+                        contentValues.clear()
+                        contentValues.put(MediaStore.Audio.Media.IS_PENDING, 0)
+                        resolver.update(uri, contentValues, null, null)
+                    } catch (e: Exception) {
+                        // Don't leave a half-written, pending entry behind in Music/WildMusic
+                        resolver.delete(uri, null, null)
+                        throw e
                     }
+
+                    "${Environment.DIRECTORY_MUSIC}/WildMusic/$fileName"
+                } else {
+                    val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "WildMusic")
+                    if (!musicDir.exists()) {
+                        musicDir.mkdirs()
+                    }
+                    val fileName = uniqueFileName(baseName, "m4a") { File(musicDir, it).exists() }
+                    val targetFile = File(musicDir, fileName)
+
+                    try {
+                        FileOutputStream(targetFile).use { out ->
+                            body.byteStream().use { input -> copyWithProgress(input, out, totalBytes, onProgress) }
+                        }
+                    } catch (e: Exception) {
+                        targetFile.delete()
+                        throw e
+                    }
+
+                    MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(targetFile.absolutePath),
+                        arrayOf("audio/mp4"),
+                        null
+                    )
+
+                    targetFile.absolutePath
                 }
 
-                MediaScannerConnection.scanFile(
-                    context,
-                    arrayOf(targetFile.absolutePath),
-                    arrayOf("audio/mp4"),
-                    null
-                )
-
-                savedPath = targetFile.absolutePath
+                onProgress(1f)
+                Result.success(savedPath)
             }
-
-            onProgress(1f)
-            Result.success(savedPath ?: fileName)
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
@@ -367,19 +345,75 @@ class YouTubeDownloadManager(private val context: Context) {
     }
 
     suspend fun getStreamUrl(track: YouTubeTrack): String? = withContext(Dispatchers.IO) {
-        ensureInitialized()
         try {
-            val streamInfo = StreamInfo.getInfo(track.webUrl)
-            val audioStreams = streamInfo.audioStreams
-            val bestAudioStream = audioStreams
-                ?.filter { it.format?.name?.contains("m4a", ignoreCase = true) == true }
-                ?.maxByOrNull { it.averageBitrate }
-                ?: audioStreams?.maxByOrNull { it.averageBitrate }
-                ?: audioStreams?.firstOrNull()
-            bestAudioStream?.content
+            resolveStreamUrlBlocking(track.webUrl)
         } catch (e: Exception) {
             e.printStackTrace()
             null
         }
     }
+
+    /**
+     * Extracts the best playable audio stream URL for a YouTube page URL.
+     * Blocks the calling thread, so only call it from a background thread
+     * (e.g. ExoPlayer's loader thread in [com.wildmusicplayer.service.PlaybackService]).
+     */
+    fun resolveStreamUrlBlocking(webUrl: String): String? {
+        ensureInitialized()
+        val streamInfo = StreamInfo.getInfo(normalizeUrl(webUrl))
+        return pickBestAudioStream(streamInfo.audioStreams)?.content
+    }
+
+    // Prefer M4A / AAC format with highest bitrate
+    private fun pickBestAudioStream(audioStreams: List<AudioStream>?): AudioStream? {
+        if (audioStreams.isNullOrEmpty()) return null
+        return audioStreams
+            .filter { it.format?.name?.contains("m4a", ignoreCase = true) == true }
+            .maxByOrNull { it.averageBitrate }
+            ?: audioStreams.maxByOrNull { it.averageBitrate }
+    }
+
+    // Normalize pasted links and YouTube Music to standard YouTube for stream extraction
+    private fun normalizeUrl(url: String): String {
+        var target = url.trim()
+        if (!target.startsWith("http://", ignoreCase = true) && !target.startsWith("https://", ignoreCase = true)) {
+            target = "https://$target"
+        }
+        return target.replace("music.youtube.com", "www.youtube.com")
+    }
+
+    private fun copyWithProgress(
+        input: InputStream,
+        output: OutputStream,
+        totalBytes: Long,
+        onProgress: (Float) -> Unit
+    ) {
+        val buffer = ByteArray(8192)
+        var downloadedBytes = 0L
+        var bytesRead: Int
+        while (input.read(buffer).also { bytesRead = it } != -1) {
+            output.write(buffer, 0, bytesRead)
+            downloadedBytes += bytesRead
+            if (totalBytes > 0) {
+                onProgress(downloadedBytes.toFloat() / totalBytes.toFloat())
+            }
+        }
+    }
+}
+
+/** Replaces characters that aren't allowed in file names and caps the length. */
+internal fun sanitizeFileName(title: String): String {
+    val cleaned = title.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().take(120).trim()
+    return cleaned.ifEmpty { "track" }
+}
+
+/** Returns "base.ext", or "base (2).ext", "base (3).ext"... for the first name that isn't taken yet. */
+internal fun uniqueFileName(base: String, extension: String, exists: (String) -> Boolean): String {
+    var candidate = "$base.$extension"
+    var n = 2
+    while (exists(candidate)) {
+        candidate = "$base ($n).$extension"
+        n++
+    }
+    return candidate
 }

@@ -165,10 +165,19 @@ fun MusicPlayerApp(
     val scope = rememberCoroutineScope()
     val audioRepository = remember { AudioRepository(context) }
     val downloadManager = remember { YouTubeDownloadManager(context) }
-    val updateChecker = remember { UpdateChecker(context) }
-    val networkPolicyManager = remember { NetworkPolicyManager(context) }
+    val updateChecker = remember { UpdateChecker.getInstance(context) }
+    val networkPolicyManager = remember { NetworkPolicyManager.getInstance(context) }
 
-    var isOfflineOnlyMode by remember { mutableStateOf(networkPolicyManager.isOfflineOnlyMode) }
+    val isOfflineOnlyMode by networkPolicyManager.offlineOnlyMode.collectAsState()
+    val setOfflineMode: (Boolean) -> Unit = { enabled ->
+        networkPolicyManager.isOfflineOnlyMode = enabled
+        val msg = if (enabled) {
+            "Switched to Offline Mode (Zero data usage, 100% local)"
+        } else {
+            "Switched to Online Mode (Search & streaming unlocked)"
+        }
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    }
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var hasPermission by remember { mutableStateOf(false) }
@@ -294,15 +303,28 @@ fun MusicPlayerApp(
         songs.filter { favoriteSongIds.contains(it.id) }
     }
 
+    // Only real MediaStore songs (id > 0) go into Recently Played and Favorites
+    val addRecentlyPlayed: (Song) -> Unit = { song ->
+        if (song.id > 0) playlistRepository.addRecentlyPlayed(song.id)
+    }
+
+    val toggleFavorite: (Long) -> Unit = { songId ->
+        if (songId > 0) {
+            playlistRepository.toggleFavorite(songId)
+        } else {
+            Toast.makeText(context, "Download this track to add it to Favorites", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val playSong: (Song, List<Song>) -> Unit = { song, playlist ->
-        playlistRepository.addRecentlyPlayed(song.id)
+        addRecentlyPlayed(song)
         controllerManager.playSong(song, playlist)
     }
 
     val shuffleAll: () -> Unit = {
         if (songs.isNotEmpty()) {
             val shuffled = songs.shuffled()
-            playlistRepository.addRecentlyPlayed(shuffled.first().id)
+            addRecentlyPlayed(shuffled.first())
             controllerManager.playSong(shuffled.first(), shuffled)
         }
     }
@@ -310,8 +332,8 @@ fun MusicPlayerApp(
     val playPlaylist: (List<Song>, Boolean) -> Unit = { list, shuffle ->
         if (list.isNotEmpty()) {
             val targetList = if (shuffle) list.shuffled() else list
-            playlistRepository.addRecentlyPlayed(targetList.first().id)
-            controllerManager.playSong(targetList.first(), targetList)
+            addRecentlyPlayed(targetList.first())
+            controllerManager.playQueue(targetList, 0)
         }
     }
 
@@ -367,17 +389,7 @@ fun MusicPlayerApp(
                     actions = {
                         // Quick Mode Toggle Pill (Online vs Offline)
                         Surface(
-                            onClick = {
-                                val next = !isOfflineOnlyMode
-                                isOfflineOnlyMode = next
-                                networkPolicyManager.isOfflineOnlyMode = next
-                                val msg = if (next) {
-                                    "Switched to Offline Mode (Zero data usage, 100% local)"
-                                } else {
-                                    "Switched to Online Mode (Search & streaming unlocked)"
-                                }
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            },
+                            onClick = { setOfflineMode(!isOfflineOnlyMode) },
                             shape = RoundedCornerShape(20.dp),
                             color = if (isOfflineOnlyMode) {
                                 MaterialTheme.colorScheme.tertiaryContainer
@@ -522,16 +534,7 @@ fun MusicPlayerApp(
                             },
                             bottomPadding = contentBottomPadding,
                             isOfflineOnlyMode = isOfflineOnlyMode,
-                            onOfflineOnlyModeToggled = { enabled ->
-                                isOfflineOnlyMode = enabled
-                                networkPolicyManager.isOfflineOnlyMode = enabled
-                                val msg = if (enabled) {
-                                    "Switched to Offline Mode (Zero data usage, 100% local)"
-                                } else {
-                                    "Switched to Online Mode (Search & streaming unlocked)"
-                                }
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            }
+                            onOfflineOnlyModeToggled = setOfflineMode
                         )
                     } else {
                         when (currentTab) {
@@ -584,11 +587,10 @@ fun MusicPlayerApp(
                                 bottomPadding = contentBottomPadding,
                                 onSongClick = playSong,
                                 onPlayPlaylist = playPlaylist,
-                                onToggleFavorite = { playlistRepository.toggleFavorite(it) },
+                                onToggleFavorite = toggleFavorite,
                                 onCreatePlaylist = { name, songIds -> playlistRepository.createPlaylist(name, songIds) },
                                 onDeletePlaylist = { playlistRepository.deletePlaylist(it) },
-                                downloadManager = downloadManager,
-                                controllerManager = controllerManager,
+                                isOfflineOnlyMode = isOfflineOnlyMode,
                                 networkPolicyManager = networkPolicyManager,
                                 onRemoveOnlineTrack = { playlistId, trackId ->
                                     playlistRepository.removeOnlineTrackFromPlaylist(playlistId, trackId)
@@ -606,11 +608,7 @@ fun MusicPlayerApp(
                                     }
                                 },
                                 isOfflineOnlyMode = isOfflineOnlyMode,
-                                onSwitchToOnline = {
-                                    isOfflineOnlyMode = false
-                                    networkPolicyManager.isOfflineOnlyMode = false
-                                    Toast.makeText(context, "Switched to Online Mode", Toast.LENGTH_SHORT).show()
-                                },
+                                onSwitchToOnline = { setOfflineMode(false) },
                                 playlistRepository = playlistRepository
                             )
                         }
@@ -640,7 +638,7 @@ fun MusicPlayerApp(
                     isPlayerExpanded = false
                     controllerManager.stopPlayback()
                 },
-                onToggleFavorite = { playlistRepository.toggleFavorite(it) },
+                onToggleFavorite = toggleFavorite,
                 bottomBarHeight = 80.dp,
                 isExpanded = isPlayerExpanded,
                 onExpandedChange = { isPlayerExpanded = it }

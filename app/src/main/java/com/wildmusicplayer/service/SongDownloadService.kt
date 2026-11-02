@@ -6,7 +6,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -22,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class SongDownloadService : Service() {
@@ -142,22 +142,16 @@ class SongDownloadService : Service() {
 
             removeActiveDownload(nextTrack.id)
 
+            // downloadTrack() already registers the file with MediaStore
             if (result.isSuccess) {
                 addCompletedTrack(nextTrack.id)
-                // Scan downloaded file into MediaStore
-                val path = result.getOrNull()
-                if (!path.isNullOrBlank()) {
-                    MediaScannerConnection.scanFile(
-                        applicationContext,
-                        arrayOf(path),
-                        arrayOf("audio/mp4", "audio/m4a"),
-                        null
-                    )
-                }
             }
 
-            isDownloading = false
-            processNext()
+            // Back on the main thread (like onStartCommand) so the isDownloading check-then-set can't race
+            withContext(Dispatchers.Main) {
+                isDownloading = false
+                processNext()
+            }
         }
     }
 

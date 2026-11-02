@@ -5,6 +5,9 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 enum class DownloadNetworkMode(val displayName: String, val description: String) {
     WIFI_ONLY("Wi-Fi Only", "Downloads are only permitted when connected to Wi-Fi"),
@@ -20,7 +23,7 @@ sealed interface DownloadPrecondition {
     data class PromptMobileData(val isMetered: Boolean) : DownloadPrecondition
 }
 
-class NetworkPolicyManager(private val context: Context) {
+class NetworkPolicyManager private constructor(private val context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("wild_music_player_prefs", Context.MODE_PRIVATE)
@@ -30,11 +33,26 @@ class NetworkPolicyManager(private val context: Context) {
         const val KEY_DOWNLOAD_NETWORK_MODE = "key_download_network_mode"
         const val KEY_BLOCK_METERED_HOTSPOTS = "key_block_metered_hotspots"
         const val KEY_BACKGROUND_DOWNLOADS = "key_background_downloads"
+
+        @Volatile
+        private var instance: NetworkPolicyManager? = null
+
+        fun getInstance(context: Context): NetworkPolicyManager {
+            return instance ?: synchronized(this) {
+                instance ?: NetworkPolicyManager(context.applicationContext).also { instance = it }
+            }
+        }
     }
 
+    private val _offlineOnlyMode = MutableStateFlow(prefs.getBoolean(KEY_OFFLINE_ONLY_MODE, false))
+
+    /** Observable Offline Only Mode, shared by every screen. */
+    val offlineOnlyMode: StateFlow<Boolean> = _offlineOnlyMode.asStateFlow()
+
     var isOfflineOnlyMode: Boolean
-        get() = prefs.getBoolean(KEY_OFFLINE_ONLY_MODE, false)
+        get() = _offlineOnlyMode.value
         set(value) {
+            _offlineOnlyMode.value = value
             prefs.edit().putBoolean(KEY_OFFLINE_ONLY_MODE, value).apply()
         }
 
@@ -96,28 +114,51 @@ class NetworkPolicyManager(private val context: Context) {
         if (isOfflineOnlyMode) {
             return DownloadPrecondition.BlockedOfflineMode
         }
-
         if (!isConnected()) {
             return DownloadPrecondition.BlockedNoNetwork
         }
-
-        val metered = isMeteredConnection()
-        val cellular = isCellularConnected()
-        val wifi = isWifiConnected()
-
-        // If connected to a metered Wi-Fi / hotspot and blocking metered is active
-        if (wifi && metered && blockMeteredHotspots && downloadNetworkMode == DownloadNetworkMode.WIFI_ONLY) {
-            return DownloadPrecondition.PromptMobileData(isMetered = true)
-        }
-
-        if (cellular) {
-            return when (downloadNetworkMode) {
-                DownloadNetworkMode.WIFI_ONLY -> DownloadPrecondition.PromptMobileData(isMetered = metered)
-                DownloadNetworkMode.ASK -> DownloadPrecondition.PromptMobileData(isMetered = metered)
-                DownloadNetworkMode.ALWAYS_ALLOW -> DownloadPrecondition.Allowed
-            }
-        }
-
-        return DownloadPrecondition.Allowed
+        return decideDownloadPrecondition(
+            offlineOnlyMode = false,
+            connected = true,
+            wifi = isWifiConnected(),
+            cellular = isCellularConnected(),
+            metered = isMeteredConnection(),
+            mode = downloadNetworkMode,
+            blockMeteredHotspots = blockMeteredHotspots
+        )
     }
+}
+
+/** The download decision itself, kept free of Android APIs so it can be unit-tested. */
+internal fun decideDownloadPrecondition(
+    offlineOnlyMode: Boolean,
+    connected: Boolean,
+    wifi: Boolean,
+    cellular: Boolean,
+    metered: Boolean,
+    mode: DownloadNetworkMode,
+    blockMeteredHotspots: Boolean
+): DownloadPrecondition {
+    if (offlineOnlyMode) {
+        return DownloadPrecondition.BlockedOfflineMode
+    }
+
+    if (!connected) {
+        return DownloadPrecondition.BlockedNoNetwork
+    }
+
+    // If connected to a metered Wi-Fi / hotspot and blocking metered is active
+    if (wifi && metered && blockMeteredHotspots && mode == DownloadNetworkMode.WIFI_ONLY) {
+        return DownloadPrecondition.PromptMobileData(isMetered = true)
+    }
+
+    if (cellular) {
+        return when (mode) {
+            DownloadNetworkMode.WIFI_ONLY -> DownloadPrecondition.PromptMobileData(isMetered = metered)
+            DownloadNetworkMode.ASK -> DownloadPrecondition.PromptMobileData(isMetered = metered)
+            DownloadNetworkMode.ALWAYS_ALLOW -> DownloadPrecondition.Allowed
+        }
+    }
+
+    return DownloadPrecondition.Allowed
 }

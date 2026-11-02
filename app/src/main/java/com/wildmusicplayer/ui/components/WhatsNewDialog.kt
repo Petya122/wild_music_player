@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🔊",
-                        title = "In-Player Volume & Snap Presets",
-                        desc = "Directly control volume from the player with instant Mute/Unmute and quick 25%, 50%, 75%, and 100% snap presets."
+                        emoji = "🔁",
+                        title = "Hybrid Playlists Play Straight Through",
+                        desc = "Play All, Shuffle and tapping any track now queue the whole playlist, local and online songs together, with no stop after an online track."
                     )
                     ChangelogItem(
-                        emoji = "🚀",
-                        title = "Decibel Boost (+dB Loudness)",
-                        desc = "Hardware DSP gain up to +12dB to amplify output beyond 100% for quiet recordings and low car Bluetooth signals."
+                        emoji = "📦",
+                        title = "Smaller, Faster App",
+                        desc = "The app is now optimized and shrunk at build time, so updates download faster and take less space."
                     )
                     ChangelogItem(
-                        emoji = "⚖️",
-                        title = "Audio Normalization",
-                        desc = "Automatically levels playback volume across quiet and loud tracks to eliminate jarring volume jumps."
+                        emoji = "⬇️",
+                        title = "More Reliable Downloads",
+                        desc = "Failed downloads no longer leave broken files behind, and downloading a song with the same title twice keeps both copies."
                     )
                     ChangelogItem(
-                        emoji = "⚙️",
-                        title = "Audio & Sound Effects Settings",
-                        desc = "New dedicated section in Settings to customize normalization, volume boost, and output levels anytime."
+                        emoji = "🐞",
+                        title = "Bug Fixes",
+                        desc = "Taps right after launch now always start playback, online streams can't be added to Favorites by mistake, and Offline Mode stays in sync across every screen."
                     )
                 }
 
