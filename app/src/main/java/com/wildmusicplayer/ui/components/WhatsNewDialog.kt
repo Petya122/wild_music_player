@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🎵",
-                        title = "YouTube Music Song Search",
-                        desc = "Search now looks in YouTube Music's Songs by default, so you get the official track with its real artist. Switch to Videos for anything else."
-                    )
-                    ChangelogItem(
-                        emoji = "🌟",
-                        title = "Smarter Best Match",
-                        desc = "Results are ranked by how well they match your words (title and artist), and sped up, slowed, cover, live and remix versions drop down unless you search for them."
+                        emoji = "🏷️",
+                        title = "Artist & Title on Downloads",
+                        desc = "Downloaded songs now carry their real title, artist and album inside the file, so the app, lock screen and your car radio show them properly."
                     )
                     ChangelogItem(
                         emoji = "🖼️",
-                        title = "Sharper Thumbnails",
-                        desc = "Search results now use the highest quality artwork available."
+                        title = "Cover Art on Downloads",
+                        desc = "Every download gets its own square cover art, saved into the song file itself."
                     )
                     ChangelogItem(
-                        emoji = "🐞",
-                        title = "Sort Bar Fix",
-                        desc = "The sort buttons no longer get squashed: the row scrolls sideways, and \"Default\" is now called \"YouTube Order\"."
+                        emoji = "🛠️",
+                        title = "Fix Older Downloads",
+                        desc = "Settings → Fix Downloaded Song Tags finds songs saved without an artist, matches them on YouTube Music and adds the tags and cover. Playlists and favorites stay intact."
+                    )
+                    ChangelogItem(
+                        emoji = "📂",
+                        title = "Cleaner File Names",
+                        desc = "New downloads are saved as \"Artist - Title.m4a\" instead of the full video name."
                     )
                 }
 

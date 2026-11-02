@@ -296,6 +296,9 @@ class YouTubeDownloadManager(private val context: Context) {
         onProgress: (Float) -> Unit
     ): Result<String> = withContext(Dispatchers.IO) {
         ensureInitialized()
+        val workDir = File(context.cacheDir, "downloads").apply { mkdirs() }
+        val rawFile = File(workDir, "${System.nanoTime()}.m4a")
+        var taggedFile: File? = null
         try {
             val streamInfo = StreamInfo.getInfo(normalizeUrl(track.webUrl))
             val bestAudioStream = pickBestAudioStream(streamInfo.audioStreams)
@@ -304,8 +307,9 @@ class YouTubeDownloadManager(private val context: Context) {
             val streamUrl = bestAudioStream.content
                 ?: return@withContext Result.failure(Exception("Audio stream URL is unavailable."))
 
-            val baseName = sanitizeFileName(track.title)
+            val metadata = trackMetadataFor(track)
 
+            // 1. Download the audio into the cache (first 90% of the progress bar)
             val request = OkHttpRequest.Builder()
                 .url(streamUrl)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
@@ -315,76 +319,105 @@ class YouTubeDownloadManager(private val context: Context) {
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(Exception("Failed to download audio stream (HTTP ${response.code})"))
                 }
-
                 val body = response.body ?: return@withContext Result.failure(Exception("Empty response body"))
                 val totalBytes = body.contentLength()
-
-                val savedPath = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // MediaStore de-duplicates DISPLAY_NAME itself ("Title (1).m4a")
-                    val fileName = "$baseName.m4a"
-                    val resolver = context.contentResolver
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
-                        put(MediaStore.Audio.Media.TITLE, track.title)
-                        put(MediaStore.Audio.Media.ARTIST, track.uploaderName)
-                        put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
-                        put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/WildMusic")
-                        put(MediaStore.Audio.Media.IS_PENDING, 1)
+                FileOutputStream(rawFile).use { out ->
+                    body.byteStream().use { input ->
+                        copyWithProgress(input, out, totalBytes) { onProgress(it * 0.9f) }
                     }
+                }
+            }
 
-                    val uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
-                        ?: return@withContext Result.failure(Exception("Failed to create MediaStore entry"))
+            // 2. Write title, artist, album and cover art into the file itself, because
+            //    MediaStore re-reads the file's own tags and ignores the values we insert
+            val finalFile = tagFile(rawFile, metadata)
+            if (finalFile != rawFile) taggedFile = finalFile
+            onProgress(0.95f)
 
-                    try {
-                        val output = resolver.openOutputStream(uri)
-                            ?: throw IOException("Failed to open MediaStore output stream")
-                        output.use { out ->
-                            body.byteStream().use { input -> copyWithProgress(input, out, totalBytes, onProgress) }
-                        }
-
-                        contentValues.clear()
-                        contentValues.put(MediaStore.Audio.Media.IS_PENDING, 0)
-                        resolver.update(uri, contentValues, null, null)
-                    } catch (e: Exception) {
-                        // Don't leave a half-written, pending entry behind in Music/WildMusic
-                        resolver.delete(uri, null, null)
-                        throw e
-                    }
-
-                    "${Environment.DIRECTORY_MUSIC}/WildMusic/$fileName"
-                } else {
-                    val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "WildMusic")
-                    if (!musicDir.exists()) {
-                        musicDir.mkdirs()
-                    }
-                    val fileName = uniqueFileName(baseName, "m4a") { File(musicDir, it).exists() }
-                    val targetFile = File(musicDir, fileName)
-
-                    try {
-                        FileOutputStream(targetFile).use { out ->
-                            body.byteStream().use { input -> copyWithProgress(input, out, totalBytes, onProgress) }
-                        }
-                    } catch (e: Exception) {
-                        targetFile.delete()
-                        throw e
-                    }
-
-                    MediaScannerConnection.scanFile(
-                        context,
-                        arrayOf(targetFile.absolutePath),
-                        arrayOf("audio/mp4"),
-                        null
-                    )
-
-                    targetFile.absolutePath
+            // 3. Save it into Music/WildMusic
+            val baseName = sanitizeFileName("${metadata.artist} - ${metadata.title}")
+            val savedPath = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // MediaStore de-duplicates DISPLAY_NAME itself ("Title (1).m4a")
+                val fileName = "$baseName.m4a"
+                val resolver = context.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Audio.Media.TITLE, metadata.title)
+                    put(MediaStore.Audio.Media.ARTIST, metadata.artist)
+                    put(MediaStore.Audio.Media.ALBUM, metadata.album)
+                    put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
+                    put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/WildMusic")
+                    put(MediaStore.Audio.Media.IS_PENDING, 1)
                 }
 
-                onProgress(1f)
-                Result.success(savedPath)
+                val uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return@withContext Result.failure(Exception("Failed to create MediaStore entry"))
+
+                try {
+                    val output = resolver.openOutputStream(uri)
+                        ?: throw IOException("Failed to open MediaStore output stream")
+                    output.use { out -> finalFile.inputStream().use { it.copyTo(out) } }
+
+                    contentValues.clear()
+                    contentValues.put(MediaStore.Audio.Media.IS_PENDING, 0)
+                    resolver.update(uri, contentValues, null, null)
+                } catch (e: Exception) {
+                    // Don't leave a half-written, pending entry behind in Music/WildMusic
+                    resolver.delete(uri, null, null)
+                    throw e
+                }
+
+                "${Environment.DIRECTORY_MUSIC}/WildMusic/$fileName"
+            } else {
+                val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "WildMusic")
+                if (!musicDir.exists()) {
+                    musicDir.mkdirs()
+                }
+                val fileName = uniqueFileName(baseName, "m4a") { File(musicDir, it).exists() }
+                val targetFile = File(musicDir, fileName)
+
+                try {
+                    finalFile.copyTo(targetFile)
+                } catch (e: Exception) {
+                    targetFile.delete()
+                    throw e
+                }
+
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(targetFile.absolutePath),
+                    arrayOf("audio/mp4"),
+                    null
+                )
+
+                targetFile.absolutePath
             }
+
+            onProgress(1f)
+            Result.success(savedPath)
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
+        } finally {
+            rawFile.delete()
+            taggedFile?.delete()
+        }
+    }
+
+    /**
+     * Writes [metadata] and its cover art into a copy of [source] (same folder, "_tagged" suffix).
+     * Returns that copy, or [source] itself if tagging failed or the result wouldn't play,
+     * so a song is never lost to a bad tag write. Blocking: call from a background thread.
+     */
+    fun tagFile(source: File, metadata: TrackMetadata): File {
+        val cover = CoverArt.fetchSquareJpeg(httpClient, metadata.coverUrl)
+        val tagged = File(source.parentFile, "${source.nameWithoutExtension}_tagged.m4a")
+        val tags = Mp4TagWriter.Tags(metadata.title, metadata.artist, metadata.album, cover)
+        return if (Mp4TagWriter.writeTags(source, tagged, tags) && CoverArt.isPlayableAudio(tagged)) {
+            tagged
+        } else {
+            tagged.delete()
+            source
         }
     }
 

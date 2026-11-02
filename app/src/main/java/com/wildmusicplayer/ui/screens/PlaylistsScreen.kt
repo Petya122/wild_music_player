@@ -73,7 +73,7 @@ import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.data.Playlist
 import com.wildmusicplayer.data.YouTubeTrack
-import com.wildmusicplayer.data.titlesMatch
+import com.wildmusicplayer.data.isDownloadedCopyOf
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.SongDownloadService
 
@@ -412,7 +412,7 @@ fun PlaylistsScreen(
             // if there is one, otherwise streamed). Undownloaded online tracks are skipped offline.
             val playQueue = remember(allSongs, playlistSongs, playlist.onlineTracks, isOfflineOnlyMode) {
                 val onlineSongs = playlist.onlineTracks.mapNotNull { track ->
-                    val localMatch = allSongs.find { titlesMatch(it.title, track.title) }
+                    val localMatch = allSongs.find { isDownloadedCopyOf(it.title, track.title, track.artist) }
                     when {
                         localMatch != null -> localMatch
                         isOfflineOnlyMode -> null
@@ -976,7 +976,7 @@ private fun PlaylistDetailView(
                     }
 
                     items(onlineTracks, key = { it.id }) { track ->
-                        val localMatch = allSongs.find { local -> titlesMatch(local.title, track.title) }
+                        val localMatch = allSongs.find { local -> isDownloadedCopyOf(local.title, track.title, track.artist) }
 
                         OnlineTrackRowItem(
                             track = track,

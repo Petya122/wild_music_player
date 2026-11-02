@@ -1,5 +1,6 @@
 package com.wildmusicplayer
 
+import com.wildmusicplayer.data.isDownloadedCopyOf
 import com.wildmusicplayer.data.titlesMatch
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,6 +27,12 @@ class TitleMatchTest {
     @Test
     fun differentSongsDoNotMatch() {
         assertFalse(titlesMatch("Yesterday", "Let It Be"))
+    }
+
+    @Test
+    fun taggedDownloadMatchesItsVideoTitle() {
+        assertTrue(isDownloadedCopyOf("Halo", "Beyoncé - Halo (Official Video)", "BeyonceVEVO"))
+        assertFalse(isDownloadedCopyOf("Halo", "Beyoncé - Single Ladies (Official Video)", "BeyonceVEVO"))
     }
 
     @Test

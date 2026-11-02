@@ -36,6 +36,7 @@ class SongDownloadService : Service() {
         const val EXTRA_TRACK_URL = "extra_track_url"
         const val EXTRA_TRACK_DURATION = "extra_track_duration"
         const val EXTRA_TRACK_THUMBNAIL = "extra_track_thumbnail"
+        const val EXTRA_TRACK_IS_MUSIC_SONG = "extra_track_is_music_song"
 
         private val _activeDownloads = MutableStateFlow<Map<String, Float>>(emptyMap())
         val activeDownloads = _activeDownloads.asStateFlow()
@@ -51,6 +52,7 @@ class SongDownloadService : Service() {
                 putExtra(EXTRA_TRACK_URL, track.webUrl)
                 putExtra(EXTRA_TRACK_DURATION, track.durationSeconds)
                 putExtra(EXTRA_TRACK_THUMBNAIL, track.thumbnailUrl)
+                putExtra(EXTRA_TRACK_IS_MUSIC_SONG, track.isMusicSong)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -91,7 +93,8 @@ class SongDownloadService : Service() {
             val uploader = it.getStringExtra(EXTRA_TRACK_UPLOADER) ?: "Unknown Artist"
             val url = it.getStringExtra(EXTRA_TRACK_URL) ?: ""
             val duration = it.getLongExtra(EXTRA_TRACK_DURATION, 0L)
-            val thumbnail = it.getStringExtra(EXTRA_TRACK_THUMBNAIL) ?: ""
+            val thumbnail = it.getStringExtra(EXTRA_TRACK_THUMBNAIL)
+            val isMusicSong = it.getBooleanExtra(EXTRA_TRACK_IS_MUSIC_SONG, false)
 
             if (!trackId.isNullOrBlank() && url.isNotBlank()) {
                 val track = YouTubeTrack(
@@ -100,7 +103,8 @@ class SongDownloadService : Service() {
                     uploaderName = uploader,
                     durationSeconds = duration,
                     thumbnailUrl = thumbnail,
-                    webUrl = url
+                    webUrl = url,
+                    isMusicSong = isMusicSong
                 )
                 enqueueTrack(track)
             }

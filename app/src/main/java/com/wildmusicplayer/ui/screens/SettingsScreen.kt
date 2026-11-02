@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Smartphone
@@ -77,7 +78,9 @@ import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.UpdateInfo
 import com.wildmusicplayer.data.UpdateResult
+import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.ui.components.PermissionsDialog
+import com.wildmusicplayer.ui.components.TagRepairDialog
 import com.wildmusicplayer.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
 
@@ -97,8 +100,11 @@ fun SettingsScreen(
     bottomPadding: Dp,
     isOfflineOnlyMode: Boolean = false,
     onOfflineOnlyModeToggled: (Boolean) -> Unit = {},
+    downloadManager: YouTubeDownloadManager? = null,
+    onLibraryChanged: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var showTagRepair by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val updateChecker = remember { UpdateChecker.getInstance(context) }
@@ -1146,6 +1152,69 @@ fun SettingsScreen(
                     modifier = Modifier.size(16.dp)
                 )
             }
+        }
+
+        // Fix tags on songs downloaded before v0.6.0
+        if (downloadManager != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showTagRepair = true },
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoFixHigh,
+                            contentDescription = "Fix downloaded song tags",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(
+                                text = "Fix Downloaded Song Tags",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Add the artist and cover art to songs downloaded before v0.6.0",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+
+        if (showTagRepair && downloadManager != null) {
+            TagRepairDialog(
+                downloadManager = downloadManager,
+                isOfflineOnlyMode = isOfflineOnlyMode,
+                onDismiss = { changed ->
+                    showTagRepair = false
+                    if (changed) onLibraryChanged()
+                }
+            )
         }
 
         // Section 4: About & Credits Card

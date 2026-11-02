@@ -534,7 +534,15 @@ fun MusicPlayerApp(
                             },
                             bottomPadding = contentBottomPadding,
                             isOfflineOnlyMode = isOfflineOnlyMode,
-                            onOfflineOnlyModeToggled = setOfflineMode
+                            onOfflineOnlyModeToggled = setOfflineMode,
+                            downloadManager = downloadManager,
+                            onLibraryChanged = {
+                                scope.launch {
+                                    // Give MediaStore a moment to re-read the rewritten files
+                                    delay(1500)
+                                    songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
+                                }
+                            }
                         )
                     } else {
                         when (currentTab) {
