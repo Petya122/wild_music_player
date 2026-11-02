@@ -75,6 +75,8 @@ import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.data.Playlist
 import com.wildmusicplayer.data.PlaylistRepository
+import com.wildmusicplayer.data.SearchMode
+import com.wildmusicplayer.data.searchScore
 import com.wildmusicplayer.service.SongDownloadService
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,56 +97,15 @@ import coil.request.ImageRequest
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.data.YouTubeTrack
 import com.wildmusicplayer.service.MusicControllerManager
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class DownloaderSortOrder(val label: String, val emoji: String) {
-    ORIGINAL("Original / Best", "🌟"),
+    ORIGINAL("Best Match", "🌟"),
     VIEWS("Most Viewed", "👁"),
-    DEFAULT("Default", "⚡")
-}
-
-private fun calculateOriginalScore(track: YouTubeTrack, query: String): Long {
-    var score = track.viewCount.coerceAtLeast(0) / 1000
-
-    val titleLower = track.title.lowercase()
-    val uploaderLower = track.uploaderName.lowercase()
-    val queryLower = query.lowercase().trim()
-
-    // Title match bonus
-    if (queryLower.isNotBlank() && titleLower.contains(queryLower)) {
-        score += 300_000
-    }
-
-    // Strong signals of official/original releases
-    if (track.isUploaderVerified) {
-        score += 500_000
-    }
-    if (uploaderLower.endsWith(" - topic") || uploaderLower.contains("vevo") || uploaderLower.contains("official")) {
-        score += 400_000
-    }
-    if (titleLower.contains("official video") || titleLower.contains("official music video") || titleLower.contains("official audio")) {
-        score += 250_000
-    }
-    if (titleLower.contains("original mix") || titleLower.contains("radio edit")) {
-        score += 150_000
-    }
-
-    // Penalize derivative/loop/reaction content
-    if (titleLower.contains("nightcore") || titleLower.contains("8d audio") || titleLower.contains("bass boosted") ||
-        titleLower.contains("1 hour") || titleLower.contains("10 hour") || titleLower.contains("10 hours") ||
-        titleLower.contains("reaction") || titleLower.contains("earrape")) {
-        score -= 2_000_000
-    }
-
-    // Normal song duration (1.5 to 7 minutes)
-    if (track.durationSeconds in 90..450) {
-        score += 100_000
-    } else if (track.durationSeconds > 900) {
-        score -= 500_000
-    }
-
-    return score
+    DEFAULT("YouTube Order", "▶️")
 }
 
 @Composable
@@ -167,6 +128,7 @@ fun DownloaderScreen(
     var searchResults by remember { mutableStateOf<List<YouTubeTrack>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var activeSortOrder by remember { mutableStateOf(DownloaderSortOrder.ORIGINAL) }
+    var searchMode by remember { mutableStateOf(downloadManager.preferredSearchMode) }
 
     var searchHistory by remember { mutableStateOf(downloadManager.getSearchHistory()) }
 
@@ -189,7 +151,7 @@ fun DownloaderScreen(
     val sortedResults = remember(searchResults, activeSortOrder, searchQuery) {
         when (activeSortOrder) {
             DownloaderSortOrder.ORIGINAL -> {
-                searchResults.sortedByDescending { calculateOriginalScore(it, searchQuery) }
+                searchResults.sortedByDescending { searchScore(it, searchQuery) }
             }
             DownloaderSortOrder.VIEWS -> {
                 searchResults.sortedByDescending { it.viewCount }
@@ -215,7 +177,7 @@ fun DownloaderScreen(
 
                 scope.launch {
                     try {
-                        val results = downloadManager.search(trimmed)
+                        val results = downloadManager.search(trimmed, searchMode)
                         searchResults = results
                         if (results.isEmpty()) {
                             searchError = "No songs found for '$trimmed'. Try another search term or paste a link."
@@ -231,7 +193,7 @@ fun DownloaderScreen(
     }
 
     // Dynamic debounced search & instant clearing
-    LaunchedEffect(searchQuery, isOfflineOnlyMode) {
+    LaunchedEffect(searchQuery, isOfflineOnlyMode, searchMode) {
         if (isOfflineOnlyMode) {
             return@LaunchedEffect
         }
@@ -248,7 +210,7 @@ fun DownloaderScreen(
         isSearching = true
         searchError = null
         try {
-            val results = downloadManager.search(trimmed)
+            val results = downloadManager.search(trimmed, searchMode)
             searchResults = results
             if (results.isEmpty()) {
                 searchError = "No songs found for '$trimmed'. Try another search term or paste a link."
@@ -409,11 +371,52 @@ fun DownloaderScreen(
             keyboardActions = KeyboardActions(onSearch = { executeSearch(searchQuery) })
         )
 
-        // Sort Bar when search results are available
+        // Where to search: YouTube Music songs (official tracks) or all YouTube videos
+        if (!isOfflineOnlyMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Search:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SearchMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = searchMode == mode,
+                        onClick = {
+                            searchMode = mode
+                            downloadManager.preferredSearchMode = mode
+                        },
+                        label = {
+                            Text(
+                                text = if (mode == SearchMode.SONGS) "🎵 ${mode.label}" else "🎬 ${mode.label}",
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    )
+                }
+            }
+        }
+
+        // Sort Bar when search results are available (scrolls sideways so chips never get squeezed)
         if (searchResults.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -431,7 +434,9 @@ fun DownloaderScreen(
                         label = {
                             Text(
                                 text = "${order.emoji} ${order.label}",
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         },
                         shape = RoundedCornerShape(12.dp),

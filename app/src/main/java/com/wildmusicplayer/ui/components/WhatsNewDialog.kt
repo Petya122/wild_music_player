@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🔁",
-                        title = "Hybrid Playlists Play Straight Through",
-                        desc = "Play All, Shuffle and tapping any track now queue the whole playlist, local and online songs together, with no stop after an online track."
+                        emoji = "🎵",
+                        title = "YouTube Music Song Search",
+                        desc = "Search now looks in YouTube Music's Songs by default, so you get the official track with its real artist. Switch to Videos for anything else."
                     )
                     ChangelogItem(
-                        emoji = "📦",
-                        title = "Smaller, Faster App",
-                        desc = "The app is now optimized and shrunk at build time, so updates download faster and take less space."
+                        emoji = "🌟",
+                        title = "Smarter Best Match",
+                        desc = "Results are ranked by how well they match your words (title and artist), and sped up, slowed, cover, live and remix versions drop down unless you search for them."
                     )
                     ChangelogItem(
-                        emoji = "⬇️",
-                        title = "More Reliable Downloads",
-                        desc = "Failed downloads no longer leave broken files behind, and downloading a song with the same title twice keeps both copies."
+                        emoji = "🖼️",
+                        title = "Sharper Thumbnails",
+                        desc = "Search results now use the highest quality artwork available."
                     )
                     ChangelogItem(
                         emoji = "🐞",
-                        title = "Bug Fixes",
-                        desc = "Taps right after launch now always start playback, online streams can't be added to Favorites by mistake, and Offline Mode stays in sync across every screen."
+                        title = "Sort Bar Fix",
+                        desc = "The sort buttons no longer get squashed: the row scrolls sideways, and \"Default\" is now called \"YouTube Order\"."
                     )
                 }
 

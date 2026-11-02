@@ -13,11 +13,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request as OkHttpRequest
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
+import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
@@ -39,7 +41,9 @@ data class YouTubeTrack(
     val webUrl: String,
     val viewCount: Long = -1L,
     val likeCount: Long = -1L,
-    val isUploaderVerified: Boolean = false
+    val isUploaderVerified: Boolean = false,
+    // True for YouTube Music "Songs" results: title is the clean song name, uploaderName the artist
+    val isMusicSong: Boolean = false
 ) {
     val formattedDuration: String
         get() {
@@ -67,6 +71,11 @@ data class YouTubeTrack(
             return "$formatted $unit"
         }
     }
+}
+
+enum class SearchMode(val label: String) {
+    SONGS("Songs"),
+    VIDEOS("Videos")
 }
 
 class YouTubeDownloadManager(private val context: Context) {
@@ -125,6 +134,14 @@ class YouTubeDownloadManager(private val context: Context) {
         historyPrefs.edit().remove("recent_queries").apply()
     }
 
+    var preferredSearchMode: SearchMode
+        get() = historyPrefs.getString("search_mode", null)
+            ?.let { saved -> SearchMode.entries.firstOrNull { it.name == saved } }
+            ?: SearchMode.SONGS
+        set(value) {
+            historyPrefs.edit().putString("search_mode", value.name).apply()
+        }
+
     private fun ensureInitialized() {
         if (isInitialized.compareAndSet(false, true)) {
             try {
@@ -177,7 +194,12 @@ class YouTubeDownloadManager(private val context: Context) {
         }
     }
 
-    suspend fun search(query: String): List<YouTubeTrack> = withContext(Dispatchers.IO) {
+    /**
+     * Searches YouTube. [SearchMode.SONGS] searches YouTube Music's Songs category (official tracks
+     * with clean titles and artists) and falls back to regular videos when it finds nothing.
+     * Pasted YouTube / YouTube Music links return that single track.
+     */
+    suspend fun search(query: String, mode: SearchMode = SearchMode.SONGS): List<YouTubeTrack> = withContext(Dispatchers.IO) {
         ensureInitialized()
         try {
             val trimmed = query.trim()
@@ -198,7 +220,7 @@ class YouTubeDownloadManager(private val context: Context) {
                         title = streamInfo.name ?: "Unknown Title",
                         uploaderName = streamInfo.uploaderName ?: "Unknown Artist",
                         durationSeconds = streamInfo.duration,
-                        thumbnailUrl = streamInfo.thumbnails?.firstOrNull()?.url,
+                        thumbnailUrl = largestImageUrl(streamInfo.thumbnails),
                         webUrl = streamInfo.url ?: cleanUrl,
                         viewCount = streamInfo.viewCount,
                         likeCount = streamInfo.likeCount,
@@ -207,29 +229,51 @@ class YouTubeDownloadManager(private val context: Context) {
                 )
             }
 
-            val searchExtractor = ServiceList.YouTube.getSearchExtractor(trimmed)
-            searchExtractor.fetchPage()
-
-            val page = searchExtractor.initialPage
-            val items = page.items
-
-            items.filterIsInstance<StreamInfoItem>().map { item ->
-                YouTubeTrack(
-                    id = item.url,
-                    title = item.name ?: "Unknown Title",
-                    uploaderName = item.uploaderName ?: "Unknown Artist",
-                    durationSeconds = item.duration,
-                    thumbnailUrl = item.thumbnails?.firstOrNull()?.url,
-                    webUrl = item.url,
-                    viewCount = item.viewCount,
-                    likeCount = -1L,
-                    isUploaderVerified = item.isUploaderVerified
-                )
+            if (mode == SearchMode.SONGS) {
+                val songs = try {
+                    runSearch(trimmed, SearchMode.SONGS)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    emptyList()
+                }
+                if (songs.isNotEmpty()) return@withContext songs
             }
+            runSearch(trimmed, SearchMode.VIDEOS)
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
         }
+    }
+
+    private fun runSearch(query: String, mode: SearchMode): List<YouTubeTrack> {
+        val contentFilter = when (mode) {
+            SearchMode.SONGS -> YoutubeSearchQueryHandlerFactory.MUSIC_SONGS
+            SearchMode.VIDEOS -> YoutubeSearchQueryHandlerFactory.VIDEOS
+        }
+        val searchExtractor = ServiceList.YouTube.getSearchExtractor(query, listOf(contentFilter), "")
+        searchExtractor.fetchPage()
+
+        return searchExtractor.initialPage.items.filterIsInstance<StreamInfoItem>().map { item ->
+            YouTubeTrack(
+                id = item.url,
+                title = item.name ?: "Unknown Title",
+                uploaderName = item.uploaderName ?: "Unknown Artist",
+                durationSeconds = item.duration,
+                thumbnailUrl = largestImageUrl(item.thumbnails),
+                webUrl = item.url,
+                viewCount = item.viewCount,
+                likeCount = -1L,
+                isUploaderVerified = item.isUploaderVerified,
+                isMusicSong = mode == SearchMode.SONGS
+            )
+        }
+    }
+
+    // Thumbnail lists run small → large; pick the biggest known size (or the last one if sizes are unknown)
+    private fun largestImageUrl(images: List<Image>?): String? {
+        if (images.isNullOrEmpty()) return null
+        val sized = images.filter { it.width > 0 }
+        return (sized.maxByOrNull { it.width } ?: images.last()).url
     }
 
     suspend fun fetchTrackDetails(track: YouTubeTrack): YouTubeTrack = withContext(Dispatchers.IO) {
