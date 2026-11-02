@@ -8,15 +8,31 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.pow
 
 /**
  * Manages player volume scaling (0.0f to 1.0f), Mute state,
  * Hardware DSP Decibel (dB) Gain via [LoudnessEnhancer], and Audio Normalization.
+ *
+ * Normalization uses each song's measured loudness ([setCurrentTrackLoudness]): songs louder
+ * than the target are turned down with the player volume, quieter ones up with the
+ * LoudnessEnhancer, on top of the user's own volume and dB boost.
  */
 class AudioEffectsManager private constructor(context: Context) {
 
+    private val appContext = context.applicationContext
+
     private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    // Loudness of the song now playing (null = unknown, e.g. online streams or not measured yet)
+    private var currentTrackLoudness: Double? = null
+
+    private val trackGainDb: Double
+        get() {
+            val loudness = currentTrackLoudness
+            return if (_isNormalizationEnabled.value && loudness != null) normalizationGainDb(loudness) else 0.0
+        }
 
     private val _volume = MutableStateFlow(prefs.getFloat(KEY_VOLUME, 1.0f))
     val volume: StateFlow<Float> = _volume.asStateFlow()
@@ -86,11 +102,24 @@ class AudioEffectsManager private constructor(context: Context) {
     fun setNormalizationEnabled(enabled: Boolean) {
         _isNormalizationEnabled.value = enabled
         prefs.edit().putBoolean(KEY_NORMALIZATION, enabled).apply()
+        // Measure the library in the background so every song has a level to even out to
+        if (enabled) com.wildmusicplayer.service.LoudnessAnalysisWorker.enqueue(appContext)
+        applyVolumeToPlayer()
+        applyDspEnhancements()
+    }
+
+    /** Called by PlaybackService when a new song starts. */
+    fun setCurrentTrackLoudness(loudnessLufs: Double?) {
+        currentTrackLoudness = loudnessLufs
+        applyVolumeToPlayer()
         applyDspEnhancements()
     }
 
     private fun applyVolumeToPlayer() {
-        val targetVolume = if (_isMuted.value) 0.0f else _volume.value
+        // Turning a loud song down is done with the player volume (clean, no processing)
+        val cut = trackGainDb.coerceAtMost(0.0)
+        val normalizationScale = 10.0.pow(cut / 20).toFloat()
+        val targetVolume = if (_isMuted.value) 0.0f else _volume.value * normalizationScale
         player?.volume = targetVolume
     }
 
@@ -113,9 +142,9 @@ class AudioEffectsManager private constructor(context: Context) {
         try {
             val enhancer = loudnessEnhancer ?: return
             // Gain is in millibels (mB): 100 mB = 1 dB
-            // Normalization adds +350 mB baseline leveling boost if enabled
+            // The user's dB boost, plus raising a quiet song towards the normalization target
             val boostmB = _volumeBoostDb.value * 100
-            val normmB = if (_isNormalizationEnabled.value) 350 else 0
+            val normmB = (trackGainDb.coerceAtLeast(0.0) * 100).toInt()
             val totalGainmB = boostmB + normmB
 
             if (totalGainmB > 0) {

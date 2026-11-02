@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.AudioEffectsManager
 import com.wildmusicplayer.data.DownloadNetworkMode
+import com.wildmusicplayer.data.LoudnessStore
 import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.ResumeSettings
 import com.wildmusicplayer.data.UpdateChecker
@@ -142,6 +143,7 @@ fun SettingsScreen(
     val isMuted by audioEffectsManager.isMuted.collectAsState()
     val boostDb by audioEffectsManager.volumeBoostDb.collectAsState()
     val isNormEnabled by audioEffectsManager.isNormalizationEnabled.collectAsState()
+    val loudnessProgress by remember { LoudnessStore.getInstance(context) }.progress.collectAsState()
 
     val currentEffectiveVol = if (isMuted) 0f else volume
     val volumePercent = (currentEffectiveVol * 100).toInt()
@@ -456,10 +458,26 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Automatically balances quiet and loud tracks to prevent sudden volume spikes",
+                            text = "Measures how loud each song is and evens out the volume between tracks (to −14 LUFS, the usual streaming level). Online streams play as they are.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (isNormEnabled) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = when {
+                                    loudnessProgress.total == 0 && loudnessProgress.running -> "Measuring songs…"
+                                    loudnessProgress.total == 0 -> "Songs are measured in the background (not while the battery is low)"
+                                    loudnessProgress.running ->
+                                        "Measuring songs: ${loudnessProgress.measured} of ${loudnessProgress.total}"
+                                    loudnessProgress.measured >= loudnessProgress.total ->
+                                        "All ${loudnessProgress.total} songs measured"
+                                    else -> "${loudnessProgress.measured} of ${loudnessProgress.total} songs measured"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                     Switch(
                         checked = isNormEnabled,

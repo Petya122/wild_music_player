@@ -27,6 +27,7 @@ import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.wildmusicplayer.MainActivity
+import com.wildmusicplayer.data.LoudnessStore
 import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.ResumeSettings
 import com.wildmusicplayer.data.YouTubeDownloadManager
@@ -63,7 +64,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     private val playerListener = object : Player.Listener {
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = saveQueue()
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            saveQueue()
+            applyTrackLoudness(mediaItem)
+        }
 
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
             if (reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
@@ -184,6 +188,14 @@ class PlaybackService : MediaSessionService() {
         }
         saveExecutor.shutdown() // finishes the last queued save first
         super.onDestroy()
+    }
+
+    // Normalization: tell the effects the measured loudness of the song that just started.
+    // Local songs have numeric MediaStore IDs; online streams don't and play unadjusted.
+    private fun applyTrackLoudness(mediaItem: MediaItem?) {
+        val songId = mediaItem?.mediaId?.toLongOrNull()
+        val loudness = songId?.let { LoudnessStore.getInstance(this).get(it) }
+        com.wildmusicplayer.data.AudioEffectsManager.getInstance(this).setCurrentTrackLoudness(loudness)
     }
 
     // Empty queues aren't saved: "Stop" clears the saved queue on purpose (MusicControllerManager)

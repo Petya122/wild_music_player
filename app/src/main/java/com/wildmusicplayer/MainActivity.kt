@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import com.wildmusicplayer.data.AudioEffectsManager
 import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.data.SongDeleter
 import com.wildmusicplayer.data.NetworkPolicyManager
@@ -88,6 +89,7 @@ import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
+import com.wildmusicplayer.service.LoudnessAnalysisWorker
 import com.wildmusicplayer.service.SongDownloadService
 import com.wildmusicplayer.ui.components.AboutDialog
 import com.wildmusicplayer.ui.components.DraggablePlayerSheet
@@ -293,6 +295,10 @@ fun MusicPlayerApp(
     LaunchedEffect(songs) {
         if (songs.isNotEmpty()) {
             playlistRepository.autoMigrateDownloadedTracks(songs, downloadedIdFor)
+            // Normalization on: measure any songs that are new since the last run
+            if (AudioEffectsManager.getInstance(context).isNormalizationEnabled.value) {
+                LoudnessAnalysisWorker.enqueue(context)
+            }
         }
     }
 

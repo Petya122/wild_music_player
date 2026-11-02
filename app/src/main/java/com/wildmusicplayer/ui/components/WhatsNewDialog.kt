@@ -39,6 +39,13 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.0", listOf(
+            ChangelogEntry("⚖️", "Real Loudness Normalization", "With Audio Normalization on, the app measures how loud each song on your phone is and evens them out: loud songs are turned down, quiet ones up, so the volume stays steady from track to track."),
+            ChangelogEntry("📊", "Measured in the Background", "Songs are measured once, in the background (not while the battery is low). Settings → Audio Normalization shows how many are done. New downloads are measured automatically."),
+            ChangelogEntry("🎚️", "Works With Your Boost", "Your volume and dB Boost still apply on top. Online streams play as they are.")
+        )
+    ),
+    ReleaseNotes(
         "0.7.4", listOf(
             ChangelogEntry("📜", "Scrollable Update History", "This list now scrolls, and the notes of earlier versions stay below the newest one.")
         )

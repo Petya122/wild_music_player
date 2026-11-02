@@ -20,8 +20,8 @@ android {
         applicationId = "com.wildmusicplayer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "0.7.4"
+        versionCode = 34
+        versionName = "0.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -90,6 +90,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.work.runtime)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     // Networking & YouTube Extraction

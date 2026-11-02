@@ -270,7 +270,7 @@ fun SoundSettingsSheet(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Automatically balances quiet and loud tracks to prevent sudden volume spikes.",
+                        text = "Measures each song and evens out the volume between tracks. Online streams play as they are.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
