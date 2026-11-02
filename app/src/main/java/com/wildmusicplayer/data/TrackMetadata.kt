@@ -84,12 +84,12 @@ internal fun cleanChannelName(channelName: String): String =
         .trim()
 
 /**
- * YouTube Music artwork URLs carry their size ("=w120-h120-l90-rj"); ask for 600×600 instead.
+ * YouTube Music artwork URLs carry their size ("=w120-h120-l90-rj"); ask for 1000×1000 instead.
  * Other URLs are returned unchanged.
  */
 internal fun upscaleGoogleThumbnail(url: String): String =
     if (url.contains("googleusercontent.com")) {
-        url.replace(Regex("""=w\d+-h\d+"""), "=w600-h600")
+        url.replace(Regex("""=w\d+-h\d+"""), "=w1000-h1000")
     } else {
         url
     }

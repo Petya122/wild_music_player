@@ -314,23 +314,7 @@ class YouTubeDownloadManager(private val context: Context) {
             val downloadIndex = DownloadIndex.getInstance(context)
 
             // 1. Download the audio into the cache (first 90% of the progress bar)
-            val request = OkHttpRequest.Builder()
-                .url(streamUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                .build()
-
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(Exception("Failed to download audio stream (HTTP ${response.code})"))
-                }
-                val body = response.body ?: return@withContext Result.failure(Exception("Empty response body"))
-                val totalBytes = body.contentLength()
-                FileOutputStream(rawFile).use { out ->
-                    body.byteStream().use { input ->
-                        copyWithProgress(input, out, totalBytes) { onProgress(it * 0.9f) }
-                    }
-                }
-            }
+            downloadInChunks(streamUrl, rawFile) { onProgress(it * 0.9f) }
 
             // 2. Write title, artist, album and cover art into the file itself, because
             //    MediaStore re-reads the file's own tags and ignores the values we insert
@@ -467,6 +451,87 @@ class YouTubeDownloadManager(private val context: Context) {
         return target.replace("music.youtube.com", "www.youtube.com")
     }
 
+    /**
+     * Downloads [url] into [target] in 1 MB pieces (HTTP Range requests). YouTube throttles a
+     * single whole-file request to roughly playback speed, but serves each small piece at full
+     * speed. A piece that fails is retried a few times, so a short network drop doesn't lose
+     * the whole download.
+     */
+    private fun downloadInChunks(url: String, target: File, onProgress: (Float) -> Unit) {
+        FileOutputStream(target).use { out ->
+            var position = 0L
+            var total = -1L
+            while (total < 0 || position < total) {
+                val end = position + CHUNK_SIZE - 1
+                var attempt = 0
+                while (true) {
+                    try {
+                        val received = downloadChunk(url, position, end, out) { chunkTotal ->
+                            total = chunkTotal
+                        }
+                        if (received < 0) {
+                            // The server ignored Range and sent the whole file in one go
+                            onProgress(1f)
+                            return
+                        }
+                        if (received == 0L) throw IOException("Empty response at byte $position")
+                        position += received
+                        break
+                    } catch (e: IOException) {
+                        if (++attempt >= CHUNK_RETRIES) throw e
+                        Thread.sleep(1000L * attempt)
+                    }
+                }
+                if (total > 0) onProgress((position.toFloat() / total).coerceIn(0f, 1f))
+            }
+        }
+    }
+
+    /**
+     * Fetches bytes [start]..[end] and appends them to [out]. Returns the number of bytes written,
+     * or -1 if the server answered with the whole file (200 instead of 206), which it also wrote.
+     */
+    private fun downloadChunk(
+        url: String,
+        start: Long,
+        end: Long,
+        out: OutputStream,
+        onTotalKnown: (Long) -> Unit
+    ): Long {
+        val request = OkHttpRequest.Builder()
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+            .header("Range", "bytes=$start-$end")
+            .build()
+        httpClient.newCall(request).execute().use { response ->
+            val body = response.body ?: throw IOException("Empty response body")
+            return when (response.code) {
+                206 -> {
+                    val total = parseContentRangeTotal(response.header("Content-Range"))
+                        ?: throw IOException("Missing Content-Range")
+                    onTotalKnown(total)
+                    // Read the whole piece first: a piece that fails halfway writes nothing,
+                    // so retrying it can't duplicate bytes in the file
+                    val bytes = body.bytes()
+                    out.write(bytes)
+                    bytes.size.toLong()
+                }
+                200 -> {
+                    try {
+                        body.byteStream().use { input -> copyWithProgress(input, out, body.contentLength()) {} }
+                    } catch (e: IOException) {
+                        // Partly written already, so this one can't be retried piece-wise
+                        throw IllegalStateException("Download interrupted", e)
+                    }
+                    -1L
+                }
+                // Asking past the end (file size was an exact multiple of the chunk size)
+                416 -> 0L.also { onTotalKnown(start) }
+                else -> throw IOException("Failed to download audio stream (HTTP ${response.code})")
+            }
+        }
+    }
+
     private fun copyWithProgress(
         input: InputStream,
         output: OutputStream,
@@ -485,6 +550,13 @@ class YouTubeDownloadManager(private val context: Context) {
         }
     }
 }
+
+private const val CHUNK_SIZE = 1024L * 1024L
+private const val CHUNK_RETRIES = 3
+
+/** The total file size from a "Content-Range: bytes 0-1048575/3547712" header, or null. */
+internal fun parseContentRangeTotal(header: String?): Long? =
+    header?.substringAfterLast('/', "")?.trim()?.toLongOrNull()
 
 /** Replaces characters that aren't allowed in file names and caps the length. */
 internal fun sanitizeFileName(title: String): String {

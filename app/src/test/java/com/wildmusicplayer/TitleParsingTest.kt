@@ -66,7 +66,7 @@ class TitleParsingTest {
         assertEquals("Move On Baby", meta.title)
         assertEquals("Some Artist", meta.artist)
         assertEquals("Move On Baby", meta.album)
-        assertEquals("https://lh3.googleusercontent.com/abc=w600-h600-l90-rj", meta.coverUrl)
+        assertEquals("https://lh3.googleusercontent.com/abc=w1000-h1000-l90-rj", meta.coverUrl)
     }
 
     @Test

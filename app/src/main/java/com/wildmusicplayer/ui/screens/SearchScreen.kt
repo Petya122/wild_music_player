@@ -52,7 +52,8 @@ fun SearchScreen(
     bottomPadding: Dp,
     onSongClick: (Song, List<Song>) -> Unit,
     onToggleFavorite: (Long) -> Unit,
-    onDeleteSong: ((Song) -> Unit)? = null
+    onDeleteSong: ((Song) -> Unit)? = null,
+    onAddToPlaylist: ((Song) -> Unit)? = null
 ) {
     var query by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf(SearchFilter.ALL) }
@@ -204,7 +205,8 @@ fun SearchScreen(
                         isFavorite = isFavorite,
                         onClick = { onSongClick(song, filteredSongs) },
                         onToggleFavorite = { onToggleFavorite(song.id) },
-                        onDelete = onDeleteSong?.let { delete -> { delete(song) } }
+                        onDelete = onDeleteSong?.let { delete -> { delete(song) } },
+                        onAddToPlaylist = onAddToPlaylist?.let { add -> { add(song) } }
                     )
                 }
             }

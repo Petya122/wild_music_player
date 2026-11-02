@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.toMediaItem
 import com.wildmusicplayer.model.Song
@@ -88,7 +89,7 @@ class MusicControllerManager(private val context: Context) {
     /** Opening the app with nothing loaded brings back the last queue, paused where it stopped. */
     private fun restoreSavedQueue(controller: MediaController) {
         val offline = NetworkPolicyManager.getInstance(context).isOfflineOnlyMode
-        val saved = QueueStore.forContext(context).load()
+        val saved = QueueStore.forContext(context).load()?.preferDownloads(DownloadIndex.getInstance(context))
             ?.let { if (offline) it.withoutOnlineSongs() else it }
             ?: return
 
@@ -240,6 +241,30 @@ class MusicControllerManager(private val context: Context) {
         mediaController?.release()
         mediaController = null
         _isConnected.value = false
+    }
+
+    /**
+     * After a download finishes: online songs waiting in the queue that are now on the phone
+     * play from the file instead of streaming. The song playing right now is left alone so it
+     * isn't interrupted.
+     */
+    fun useDownloadedCopies(downloadIndex: DownloadIndex) {
+        val controller = mediaController ?: return
+        val updated = currentPlaylist.toMutableList()
+        var changed = false
+        currentPlaylist.forEachIndexed { index, song ->
+            if (!song.isOnline || index == controller.currentMediaItemIndex) return@forEachIndexed
+            if (index >= controller.mediaItemCount || controller.getMediaItemAt(index).mediaId != song.mediaId) {
+                return@forEachIndexed
+            }
+            val localId = Song.webUrlOf(song.contentUri)?.let { downloadIndex.downloadedIdFor(it) }
+                ?: return@forEachIndexed
+            val local = song.copy(id = localId, contentUri = localSongUri(localId))
+            controller.replaceMediaItem(index, local.toMediaItem())
+            updated[index] = local
+            changed = true
+        }
+        if (changed) currentPlaylist = updated
     }
 
     /**

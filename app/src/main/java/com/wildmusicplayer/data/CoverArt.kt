@@ -14,10 +14,10 @@ import kotlin.math.min
 /** Cover art and file checks used when tagging downloaded songs. */
 object CoverArt {
 
-    private const val COVER_SIZE = 600
+    private const val COVER_SIZE = 1000
 
     /**
-     * Downloads [url] and returns it as a square 600×600 JPEG, or null if anything fails.
+     * Downloads [url] and returns it as a square 1000×1000 JPEG, or null if anything fails.
      * 16:9 video thumbnails are center-cropped; 4:3 ones ("hqdefault") first lose their black bars.
      */
     fun fetchSquareJpeg(httpClient: OkHttpClient, url: String?): ByteArray? {
@@ -30,7 +30,9 @@ object CoverArt {
             } ?: return null
             val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
             val square = cropToSquare(source)
-            val scaled = Bitmap.createScaledBitmap(square, COVER_SIZE, COVER_SIZE, true)
+            // Never upscale: a bigger copy of a small thumbnail isn't any sharper
+            val size = minOf(square.width, COVER_SIZE)
+            val scaled = Bitmap.createScaledBitmap(square, size, size, true)
             ByteArrayOutputStream().use { out ->
                 scaled.compress(Bitmap.CompressFormat.JPEG, 90, out)
                 out.toByteArray()

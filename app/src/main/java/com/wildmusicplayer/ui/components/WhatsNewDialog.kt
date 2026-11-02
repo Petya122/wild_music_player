@@ -39,6 +39,15 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.2", listOf(
+            ChangelogEntry("⚡", "Faster Downloads", "Songs now download in small pieces, which YouTube doesn't slow down, and a piece that fails is simply retried."),
+            ChangelogEntry("➕", "Add Your Songs to Playlists", "Tap ⋮ on any song → Add to playlist… to put it in one or more playlists, or create a new one. Inside a playlist, ⋮ → Remove from this playlist."),
+            ChangelogEntry("📶", "Downloaded Songs Stop Streaming", "Once a queued song finishes downloading, the queue plays the file instead of streaming it, also when the car resumes it."),
+            ChangelogEntry("🔢", "Correct Playlist Counts", "Downloaded tracks count as local right away, and Sync All only downloads what isn't on your phone yet."),
+            ChangelogEntry("✨", "Polish", "Sharper cover art, no repeated title under the artist, the keyboard closes when you scroll results, and \"1 track liked\".")
+        )
+    ),
+    ReleaseNotes(
         "0.8.1", listOf(
             ChangelogEntry("🩹", "App Opens Again", "v0.8.0 crashed right at startup on every phone. Fixed, and the background song measuring for Audio Normalization now actually runs.")
         )

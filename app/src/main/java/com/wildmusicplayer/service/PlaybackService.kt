@@ -27,6 +27,7 @@ import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.wildmusicplayer.MainActivity
+import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.data.LoudnessStore
 import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.ResumeSettings
@@ -218,7 +219,9 @@ class PlaybackService : MediaSessionService() {
                 return Futures.immediateFailedFuture(UnsupportedOperationException("Resume is turned off"))
             }
             val offline = NetworkPolicyManager.getInstance(this@PlaybackService).isOfflineOnlyMode
-            val saved = queueStore.load()?.let { if (offline) it.withoutOnlineSongs() else it }
+            val saved = queueStore.load()
+                ?.preferDownloads(DownloadIndex.getInstance(this@PlaybackService))
+                ?.let { if (offline) it.withoutOnlineSongs() else it }
                 ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
 
             mediaSession.player.shuffleModeEnabled = saved.shuffle

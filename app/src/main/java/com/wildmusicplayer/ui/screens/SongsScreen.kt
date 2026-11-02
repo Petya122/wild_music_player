@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.PlaylistRemove
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -61,7 +63,8 @@ fun SongsScreen(
     onSongClick: (Song) -> Unit,
     onShuffleAll: () -> Unit,
     onToggleFavorite: (Long) -> Unit,
-    onDeleteSong: ((Song) -> Unit)? = null
+    onDeleteSong: ((Song) -> Unit)? = null,
+    onAddToPlaylist: ((Song) -> Unit)? = null
 ) {
     var sortOrder by remember { mutableStateOf(SongSortOrder.DEFAULT) }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -186,7 +189,8 @@ fun SongsScreen(
                     isFavorite = isFavorite,
                     onClick = { onSongClick(song) },
                     onToggleFavorite = { onToggleFavorite(song.id) },
-                    onDelete = onDeleteSong?.let { delete -> { delete(song) } }
+                    onDelete = onDeleteSong?.let { delete -> { delete(song) } },
+                    onAddToPlaylist = onAddToPlaylist?.let { add -> { add(song) } }
                 )
             }
         }
@@ -200,7 +204,10 @@ fun SongRowItem(
     isFavorite: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onAddToPlaylist: (() -> Unit)? = null,
+    // Only inside a custom playlist
+    onRemoveFromPlaylist: (() -> Unit)? = null
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -253,7 +260,7 @@ fun SongRowItem(
             )
         }
 
-        if (onDelete != null) {
+        if (onDelete != null || onAddToPlaylist != null || onRemoveFromPlaylist != null) {
             Box {
                 IconButton(
                     onClick = { menuOpen = true },
@@ -267,20 +274,46 @@ fun SongRowItem(
                     )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Delete from phone", color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        onClick = {
-                            menuOpen = false
-                            onDelete()
-                        }
-                    )
+                    if (onAddToPlaylist != null) {
+                        DropdownMenuItem(
+                            text = { Text("Add to playlist…") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onAddToPlaylist()
+                            }
+                        )
+                    }
+                    if (onRemoveFromPlaylist != null) {
+                        DropdownMenuItem(
+                            text = { Text("Remove from this playlist") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.Default.PlaylistRemove, contentDescription = null)
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onRemoveFromPlaylist()
+                            }
+                        )
+                    }
+                    if (onDelete != null) {
+                        DropdownMenuItem(
+                            text = { Text("Delete from phone", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onDelete()
+                            }
+                        )
+                    }
                 }
             }
         }

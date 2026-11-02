@@ -213,6 +213,14 @@ class PlaylistRepository(context: Context) {
         return isSongInPlaylist(playlistId, songId)
     }
 
+    fun removeSongFromPlaylist(playlistId: String, songId: Long) {
+        val updated = _customPlaylists.value.map { playlist ->
+            if (playlist.id == playlistId) playlist.copy(songIds = playlist.songIds - songId) else playlist
+        }
+        _customPlaylists.value = updated
+        savePlaylists(updated)
+    }
+
     fun isSongInPlaylist(playlistId: String, songId: Long): Boolean {
         return _customPlaylists.value.find { it.id == playlistId }?.songIds?.contains(songId) == true
     }

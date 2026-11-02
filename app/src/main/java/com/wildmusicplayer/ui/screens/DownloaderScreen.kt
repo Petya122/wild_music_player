@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -145,6 +146,10 @@ fun DownloaderScreen(
 
     // State for interactive song card action dialog
     var selectedTrackForAction by remember { mutableStateOf<YouTubeTrack?>(null) }
+    // Opening a result's actions also puts the keyboard away
+    LaunchedEffect(selectedTrackForAction) {
+        if (selectedTrackForAction != null) focusManager.clearFocus()
+    }
     var isPreparingStream by remember { mutableStateOf(false) }
 
     // Sorted results based on activeSortOrder
@@ -641,8 +646,13 @@ fun DownloaderScreen(
                 }
             }
         } else {
-            // Results list
+            // Results list: scrolling it puts the keyboard away so the results are visible
+            val resultsListState = rememberLazyListState()
+            LaunchedEffect(resultsListState.isScrollInProgress) {
+                if (resultsListState.isScrollInProgress) focusManager.clearFocus()
+            }
             LazyColumn(
+                state = resultsListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)

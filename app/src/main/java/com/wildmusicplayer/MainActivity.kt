@@ -92,6 +92,7 @@ import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.service.LoudnessAnalysisWorker
 import com.wildmusicplayer.service.SongDownloadService
 import com.wildmusicplayer.ui.components.AboutDialog
+import com.wildmusicplayer.ui.components.AddToPlaylistDialog
 import com.wildmusicplayer.ui.components.DraggablePlayerSheet
 import com.wildmusicplayer.ui.components.SongThumbnail
 import com.wildmusicplayer.ui.components.SplashScreen
@@ -308,6 +309,8 @@ fun MusicPlayerApp(
             delay(1200) // Allow MediaScanner to finish indexing the newly written file
             songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
             playlistRepository.autoMigrateDownloadedTracks(songs, downloadedIdFor)
+            // Queued streams of the songs just downloaded switch to the files
+            controllerManager.useDownloadedCopies(downloadIndex)
         }
     }
 
@@ -357,6 +360,7 @@ fun MusicPlayerApp(
     // ---- Deleting songs from the phone ----
     val songDeleter = remember { SongDeleter(context) }
     var songAwaitingConfirm by remember { mutableStateOf<Song?>(null) } // Android 10 and older: app's own dialog
+    var songForPlaylistPicker by remember { mutableStateOf<Song?>(null) }
     var songAwaitingSystem by remember { mutableStateOf<Song?>(null) } // waiting on Android's dialog
 
     val afterSongDeleted: (Song) -> Unit = { song ->
@@ -631,7 +635,8 @@ fun MusicPlayerApp(
                                 onSongClick = { selectedSong -> playSong(selectedSong, songs) },
                                 onShuffleAll = shuffleAll,
                                 onToggleFavorite = { playlistRepository.toggleFavorite(it) },
-                                onDeleteSong = requestDeleteSong
+                                onDeleteSong = requestDeleteSong,
+                                onAddToPlaylist = { songForPlaylistPicker = it }
                             )
                         }
                         NavigationTab.SEARCH -> {
@@ -642,7 +647,8 @@ fun MusicPlayerApp(
                                 bottomPadding = contentBottomPadding,
                                 onSongClick = playSong,
                                 onToggleFavorite = { playlistRepository.toggleFavorite(it) },
-                                onDeleteSong = requestDeleteSong
+                                onDeleteSong = requestDeleteSong,
+                                onAddToPlaylist = { songForPlaylistPicker = it }
                             )
                         }
                         NavigationTab.PLAYLISTS -> {
@@ -662,7 +668,9 @@ fun MusicPlayerApp(
                                 onRemoveOnlineTrack = { playlistId, trackId ->
                                     playlistRepository.removeOnlineTrackFromPlaylist(playlistId, trackId)
                                 },
-                                onDeleteSong = requestDeleteSong
+                                onDeleteSong = requestDeleteSong,
+                                onAddToPlaylist = { songForPlaylistPicker = it },
+                                onRemoveSongFromPlaylist = { playlistId, songId -> playlistRepository.removeSongFromPlaylist(playlistId, songId) }
                             )
                         }
                         NavigationTab.DOWNLOADER -> {
@@ -710,6 +718,17 @@ fun MusicPlayerApp(
                 bottomBarHeight = 80.dp,
                 isExpanded = isPlayerExpanded,
                 onExpandedChange = { isPlayerExpanded = it }
+            )
+        }
+
+        // "Add to playlist…" from a song's ⋮ menu
+        songForPlaylistPicker?.let { song ->
+            AddToPlaylistDialog(
+                song = song,
+                playlists = customPlaylists,
+                onToggle = { playlistId -> playlistRepository.toggleSongInPlaylist(playlistId, song.id) },
+                onCreate = { name -> playlistRepository.createPlaylist(name, listOf(song.id)) },
+                onDismiss = { songForPlaylistPicker = null }
             )
         }
 

@@ -115,7 +115,9 @@ fun PlaylistsScreen(
     isOfflineOnlyMode: Boolean = false,
     networkPolicyManager: NetworkPolicyManager? = null,
     onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null,
-    onDeleteSong: ((Song) -> Unit)? = null
+    onDeleteSong: ((Song) -> Unit)? = null,
+    onAddToPlaylist: ((Song) -> Unit)? = null,
+    onRemoveSongFromPlaylist: ((playlistId: String, songId: Long) -> Unit)? = null
 ) {
     var selectedPlaylist by remember { mutableStateOf<PlaylistSelection>(PlaylistSelection.None) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -253,7 +255,7 @@ fun PlaylistsScreen(
                     item {
                         PlaylistCard(
                             title = "Favorite Songs",
-                            subtitle = "${favoriteSongs.size} tracks liked",
+                            subtitle = "${favoriteSongs.size} ${if (favoriteSongs.size == 1) "track" else "tracks"} liked",
                             icon = Icons.Default.Favorite,
                             iconTint = MaterialTheme.colorScheme.primary,
                             onClick = { selectedPlaylist = PlaylistSelection.Favorites }
@@ -386,7 +388,8 @@ fun PlaylistsScreen(
                 onPlayAll = { onPlayPlaylist(favoriteSongs, false) },
                 onShuffleAll = { onPlayPlaylist(favoriteSongs, true) },
                 onToggleFavorite = onToggleFavorite,
-                onDeleteSong = onDeleteSong
+                onDeleteSong = onDeleteSong,
+                onAddToPlaylist = onAddToPlaylist
             )
         }
 
@@ -404,7 +407,8 @@ fun PlaylistsScreen(
                 onPlayAll = { onPlayPlaylist(selection.songs, false) },
                 onShuffleAll = { onPlayPlaylist(selection.songs, true) },
                 onToggleFavorite = onToggleFavorite,
-                onDeleteSong = onDeleteSong
+                onDeleteSong = onDeleteSong,
+                onAddToPlaylist = onAddToPlaylist
             )
         }
 
@@ -435,8 +439,10 @@ fun PlaylistsScreen(
                 }
                 (playlistSongs + onlineSongs).distinctBy { it.mediaId }
             }
-            val localCount = playlistSongs.size
-            val onlineCount = playlist.onlineTracks.size
+            // Online tracks already downloaded count as local
+            val downloadedOnline = playlist.onlineTracks.count { downloadedCopyOf(it, allSongs, downloadIndex) != null }
+            val localCount = playlistSongs.size + downloadedOnline
+            val onlineCount = playlist.onlineTracks.size - downloadedOnline
             val totalCount = localCount + onlineCount
             val subtitle = if (onlineCount > 0) {
                 "$totalCount tracks ($localCount local, $onlineCount online)"
@@ -459,6 +465,8 @@ fun PlaylistsScreen(
                 onShuffleAll = { onPlayPlaylist(playQueue, true) },
                 onToggleFavorite = onToggleFavorite,
                 onDeleteSong = onDeleteSong,
+                onAddToPlaylist = onAddToPlaylist,
+                onRemoveFromPlaylist = { song -> onRemoveSongFromPlaylist?.invoke(playlist.id, song.id) },
                 isOfflineOnlyMode = isOfflineOnlyMode,
                 networkPolicyManager = networkPolicyManager,
                 onPlayOnlineTrack = { track ->
@@ -746,7 +754,9 @@ private fun PlaylistDetailView(
     networkPolicyManager: NetworkPolicyManager? = null,
     onPlayOnlineTrack: ((OnlineTrack) -> Unit)? = null,
     onRemoveOnlineTrack: ((String) -> Unit)? = null,
-    onDeleteSong: ((Song) -> Unit)? = null
+    onDeleteSong: ((Song) -> Unit)? = null,
+    onAddToPlaylist: ((Song) -> Unit)? = null,
+    onRemoveFromPlaylist: ((Song) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val downloadIndex = remember { DownloadIndex.getInstance(context) }
@@ -787,7 +797,9 @@ private fun PlaylistDetailView(
         }
 
         // Hybrid Sync Offline Banner
-        if (onlineTracks.isNotEmpty()) {
+        // Only tracks not on the phone yet: Sync All never downloads a song twice
+        val notDownloaded = onlineTracks.filter { downloadedCopyOf(it, allSongs, downloadIndex) == null }
+        if (notDownloaded.isNotEmpty()) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -819,7 +831,7 @@ private fun PlaylistDetailView(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "${onlineTracks.size} online ${if (onlineTracks.size == 1) "track" else "tracks"} can be synced for offline play.",
+                            text = "${notDownloaded.size} online ${if (notDownloaded.size == 1) "track" else "tracks"} can be synced for offline play.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
                         )
@@ -843,7 +855,7 @@ private fun PlaylistDetailView(
                                     Toast.makeText(context, "Downloads blocked on metered network (check Settings).", Toast.LENGTH_SHORT).show()
                                 }
                                 else -> {
-                                    onlineTracks.forEach { ot ->
+                                    notDownloaded.forEach { ot ->
                                         val ytTrack = YouTubeTrack(
                                             id = ot.id,
                                             title = ot.title,
@@ -854,7 +866,7 @@ private fun PlaylistDetailView(
                                         )
                                         SongDownloadService.startDownload(context, ytTrack)
                                     }
-                                    Toast.makeText(context, "Syncing ${onlineTracks.size} tracks for offline playback in background...", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Syncing ${notDownloaded.size} tracks for offline playback in background...", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         },
@@ -972,7 +984,9 @@ private fun PlaylistDetailView(
                             isFavorite = isFavorite,
                             onClick = { onSongClick(song) },
                             onToggleFavorite = { onToggleFavorite(song.id) },
-                            onDelete = onDeleteSong?.let { delete -> { delete(song) } }
+                            onDelete = onDeleteSong?.let { delete -> { delete(song) } },
+                            onAddToPlaylist = onAddToPlaylist?.let { add -> { add(song) } },
+                            onRemoveFromPlaylist = onRemoveFromPlaylist?.let { remove -> { remove(song) } }
                         )
                     }
                 }

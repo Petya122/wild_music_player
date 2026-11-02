@@ -215,7 +215,8 @@ fun NowPlayingScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (song.album.isNotBlank() && song.album != "Unknown Album") {
+                    // Downloads use the title as their album ("single"); repeating it adds nothing
+                    if (song.album.isNotBlank() && song.album != "Unknown Album" && !song.album.equals(song.title, ignoreCase = true)) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = song.album,
