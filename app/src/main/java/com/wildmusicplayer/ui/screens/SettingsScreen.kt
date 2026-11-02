@@ -70,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.wildmusicplayer.BuildConfig
@@ -499,13 +500,23 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        val boostOptions = listOf(0 to "Off", 3 to "+3dB", 6 to "+6dB", 9 to "+9dB", 12 to "+12dB")
+                        // Short labels: five chips share one row, and the heading already says "dB"
+                        val boostOptions = listOf(0 to "Off", 3 to "+3", 6 to "+6", 9 to "+9", 12 to "+12")
                         boostOptions.forEach { (db, label) ->
                             val isSelected = boostDb == db
                             FilterChip(
                                 selected = isSelected,
                                 onClick = { audioEffectsManager.setVolumeBoostDb(db) },
-                                label = { Text(label, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
                                     selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
@@ -579,7 +590,16 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = isSelected,
                                 onClick = { audioEffectsManager.setVolume(targetVol) },
-                                label = { Text(label, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                     selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer

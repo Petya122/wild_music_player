@@ -110,10 +110,10 @@ fun SongsScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${sortedSongs.size} songs • sorted by ${sortOrder.label}",
+                            text = "${sortedSongs.size} songs • ${sortOrder.label}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                     }

@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
+                        emoji = "🔎",
+                        title = "Search in Fix Song Tags",
+                        desc = "Wrong or missing match? Tap \"Not right? Search…\" on any song and type the artist and title yourself, in Songs or Videos. Up to 10 suggestions per song."
+                    )
+                    ChangelogItem(
+                        emoji = "🎤",
+                        title = "Artist-Aware Playlist Matching",
+                        desc = "A local song now only stands in for an online playlist track if the artist matches too, so a remix with the same title no longer replaces the original."
+                    )
+                    ChangelogItem(
+                        emoji = "🔊",
+                        title = "Tidier dB Boost Buttons",
+                        desc = "The boost buttons now read Off · +3 · +6 · +9 · +12 on one line instead of wrapping."
+                    )
+                    ChangelogItem(
                         emoji = "🚗",
-                        title = "Resume From Your Car",
-                        desc = "Press Play on your car radio or headset (or switch the radio to Media) and the music continues where you stopped, even if the app was closed."
-                    )
-                    ChangelogItem(
-                        emoji = "🔵",
-                        title = "Resume When Bluetooth Reconnects",
-                        desc = "If music paused because the car or headphones disconnected, it starts again when they reconnect within 2 hours."
-                    )
-                    ChangelogItem(
-                        emoji = "⏯️",
-                        title = "Pick Up Where You Left Off",
-                        desc = "Opening the app brings back your last queue, paused at the same spot. The Stop button clears it; Exit keeps it for the car."
-                    )
-                    ChangelogItem(
-                        emoji = "⏭️",
-                        title = "No More Stuck Queues",
-                        desc = "A song that can't play (deleted file, unavailable stream) is skipped instead of stopping the music. Settings → Car & Bluetooth has both resume options."
+                        title = "Still New: Car Auto-Resume",
+                        desc = "Press Play on your car radio (or switch it to Media) and music continues where you stopped, even after the app was closed."
                     )
                 }
 

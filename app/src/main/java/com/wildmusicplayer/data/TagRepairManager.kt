@@ -73,13 +73,22 @@ class TagRepairManager(
         result.sortedBy { it.title.lowercase() }
     }
 
-    /** Up to five YouTube Music songs that could be this download, best match first. */
-    suspend fun findMatches(candidate: RepairCandidate): List<YouTubeTrack> {
-        val query = stripTitleNoise(candidate.title).ifBlank { candidate.title }
-        return downloadManager.search(query, SearchMode.SONGS)
+    /** The search the tool starts with for a download: its title without "(Official Video)"-style noise. */
+    fun suggestedQuery(candidate: RepairCandidate): String =
+        stripTitleNoise(candidate.title).ifBlank { candidate.title }
+
+    /** Up to ten YouTube Music songs that could be this download, best match first. */
+    suspend fun findMatches(candidate: RepairCandidate): List<YouTubeTrack> =
+        searchMatches(suggestedQuery(candidate), SearchMode.SONGS)
+
+    /**
+     * A search the user typed, e.g. "intermission six days" when the file only knows "Six Days".
+     * Songs mode falls back to videos when YouTube Music has nothing.
+     */
+    suspend fun searchMatches(query: String, mode: SearchMode): List<YouTubeTrack> =
+        downloadManager.search(query, mode)
             .sortedByDescending { searchScore(it, query) }
-            .take(5)
-    }
+            .take(MAX_MATCHES)
 
     /**
      * Android 11+ only lets the app edit files it created. Files from before a reinstall need the
@@ -121,5 +130,9 @@ class TagRepairManager(
             original.delete()
             tagged?.delete()
         }
+    }
+
+    companion object {
+        private const val MAX_MATCHES = 10
     }
 }

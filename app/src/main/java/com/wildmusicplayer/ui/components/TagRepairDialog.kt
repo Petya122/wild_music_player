@@ -19,17 +19,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +60,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.wildmusicplayer.data.RepairCandidate
+import com.wildmusicplayer.data.SearchMode
 import com.wildmusicplayer.data.TagRepairManager
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.data.YouTubeTrack
@@ -200,6 +207,19 @@ fun TagRepairDialog(
                             RepairRow(
                                 candidate = candidate,
                                 state = states[candidate.id] ?: RepairState.Searching,
+                                suggestedQuery = manager.suggestedQuery(candidate),
+                                onSearch = { query, mode ->
+                                    states[candidate.id] = RepairState.Searching
+                                    scope.launch {
+                                        val matches = try {
+                                            manager.searchMatches(query, mode)
+                                        } catch (e: Exception) {
+                                            emptyList()
+                                        }
+                                        states[candidate.id] =
+                                            if (matches.isEmpty()) RepairState.NoMatch else RepairState.Ready(matches, 0)
+                                    }
+                                },
                                 onUse = { match -> requestApply(listOf(candidate to match)) },
                                 onNextMatch = {
                                     (states[candidate.id] as? RepairState.Ready)?.let { ready ->
@@ -220,10 +240,22 @@ fun TagRepairDialog(
 private fun RepairRow(
     candidate: RepairCandidate,
     state: RepairState,
+    suggestedQuery: String,
+    onSearch: (query: String, mode: SearchMode) -> Unit,
     onUse: (YouTubeTrack) -> Unit,
     onNextMatch: () -> Unit,
     onSkip: () -> Unit
 ) {
+    var searchOpen by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf(suggestedQuery) }
+    var mode by remember { mutableStateOf(SearchMode.SONGS) }
+    val submitSearch = {
+        if (query.isNotBlank()) {
+            onSearch(query.trim(), mode)
+            searchOpen = false
+        }
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
@@ -287,6 +319,44 @@ private fun RepairRow(
                         }
                         TextButton(onClick = onSkip) { Text("Skip") }
                     }
+                }
+            }
+
+            // Wrong or missing match: search again with your own words ("intermission six days")
+            val canSearch = state is RepairState.Ready || state == RepairState.NoMatch || state == RepairState.Failed
+            if (canSearch && !searchOpen) {
+                TextButton(onClick = { searchOpen = true }) {
+                    Icon(imageVector = Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Not right? Search…")
+                }
+            }
+            if (canSearch && searchOpen) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    label = { Text("Artist and song title") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SearchMode.entries.forEach { option ->
+                        FilterChip(
+                            selected = mode == option,
+                            onClick = { mode = option },
+                            label = { Text(option.label, maxLines = 1, softWrap = false) }
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(onClick = { searchOpen = false }) { Text("Cancel") }
+                    Button(onClick = { submitSearch() }, enabled = query.isNotBlank()) { Text("Search") }
                 }
             }
         }

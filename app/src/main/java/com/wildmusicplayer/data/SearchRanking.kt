@@ -1,5 +1,6 @@
 package com.wildmusicplayer.data
 
+import java.text.Normalizer
 import kotlin.math.log10
 
 // Versions people usually don't want unless they typed the word themselves
@@ -69,9 +70,13 @@ fun searchScore(track: YouTubeTrack, query: String): Double {
     return score
 }
 
-/** Lowercase, punctuation to spaces, single spaces: "Move On, Baby! (Official)" → "move on baby official". */
+/**
+ * Lowercase, accents removed, punctuation to spaces:
+ * "Move On, Baby! (Official)" → "move on baby official", "Beyoncé" → "beyonce".
+ */
 internal fun normalizeForSearch(text: String): String =
-    text.lowercase()
+    Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
         .trim()
 

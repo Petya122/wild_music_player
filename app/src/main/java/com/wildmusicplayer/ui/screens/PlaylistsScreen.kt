@@ -412,7 +412,7 @@ fun PlaylistsScreen(
             // if there is one, otherwise streamed). Undownloaded online tracks are skipped offline.
             val playQueue = remember(allSongs, playlistSongs, playlist.onlineTracks, isOfflineOnlyMode) {
                 val onlineSongs = playlist.onlineTracks.mapNotNull { track ->
-                    val localMatch = allSongs.find { isDownloadedCopyOf(it.title, track.title, track.artist) }
+                    val localMatch = allSongs.find { isDownloadedCopyOf(it.title, it.artist, track.title, track.artist) }
                     when {
                         localMatch != null -> localMatch
                         isOfflineOnlyMode -> null
@@ -976,7 +976,7 @@ private fun PlaylistDetailView(
                     }
 
                     items(onlineTracks, key = { it.id }) { track ->
-                        val localMatch = allSongs.find { local -> isDownloadedCopyOf(local.title, track.title, track.artist) }
+                        val localMatch = allSongs.find { local -> isDownloadedCopyOf(local.title, local.artist, track.title, track.artist) }
 
                         OnlineTrackRowItem(
                             track = track,

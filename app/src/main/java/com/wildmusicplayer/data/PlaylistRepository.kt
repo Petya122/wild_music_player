@@ -256,7 +256,7 @@ class PlaylistRepository(context: Context) {
                 val newSongIds = playlist.songIds.toMutableList()
 
                 for (online in playlist.onlineTracks) {
-                    val match = localSongs.find { local -> isDownloadedCopyOf(local.title, online.title, online.artist) }
+                    val match = localSongs.find { local -> isDownloadedCopyOf(local.title, local.artist, online.title, online.artist) }
 
                     if (match != null) {
                         if (!newSongIds.contains(match.id)) {
