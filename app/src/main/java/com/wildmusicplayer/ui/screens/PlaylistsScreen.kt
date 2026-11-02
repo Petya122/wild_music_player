@@ -71,6 +71,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.data.DownloadPrecondition
 import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.OnlineTrack
@@ -113,7 +114,8 @@ fun PlaylistsScreen(
     onDeletePlaylist: (String) -> Unit,
     isOfflineOnlyMode: Boolean = false,
     networkPolicyManager: NetworkPolicyManager? = null,
-    onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null
+    onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null,
+    onDeleteSong: ((Song) -> Unit)? = null
 ) {
     var selectedPlaylist by remember { mutableStateOf<PlaylistSelection>(PlaylistSelection.None) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -383,7 +385,8 @@ fun PlaylistsScreen(
                 onSongClick = { song -> onSongClick(song, favoriteSongs) },
                 onPlayAll = { onPlayPlaylist(favoriteSongs, false) },
                 onShuffleAll = { onPlayPlaylist(favoriteSongs, true) },
-                onToggleFavorite = onToggleFavorite
+                onToggleFavorite = onToggleFavorite,
+                onDeleteSong = onDeleteSong
             )
         }
 
@@ -400,7 +403,8 @@ fun PlaylistsScreen(
                 onSongClick = { song -> onSongClick(song, selection.songs) },
                 onPlayAll = { onPlayPlaylist(selection.songs, false) },
                 onShuffleAll = { onPlayPlaylist(selection.songs, true) },
-                onToggleFavorite = onToggleFavorite
+                onToggleFavorite = onToggleFavorite,
+                onDeleteSong = onDeleteSong
             )
         }
 
@@ -413,9 +417,10 @@ fun PlaylistsScreen(
 
             // One queue for the whole playlist: local songs, then online tracks (the downloaded copy
             // if there is one, otherwise streamed). Undownloaded online tracks are skipped offline.
+            val downloadIndex = DownloadIndex.getInstance(LocalContext.current)
             val playQueue = remember(allSongs, playlistSongs, playlist.onlineTracks, isOfflineOnlyMode) {
                 val onlineSongs = playlist.onlineTracks.mapNotNull { track ->
-                    val localMatch = allSongs.find { isDownloadedCopyOf(it.title, it.artist, track.title, track.artist) }
+                    val localMatch = downloadedCopyOf(track, allSongs, downloadIndex)
                     when {
                         localMatch != null -> localMatch
                         isOfflineOnlyMode -> null
@@ -453,6 +458,7 @@ fun PlaylistsScreen(
                 onPlayAll = { onPlayPlaylist(playQueue, false) },
                 onShuffleAll = { onPlayPlaylist(playQueue, true) },
                 onToggleFavorite = onToggleFavorite,
+                onDeleteSong = onDeleteSong,
                 isOfflineOnlyMode = isOfflineOnlyMode,
                 networkPolicyManager = networkPolicyManager,
                 onPlayOnlineTrack = { track ->
@@ -739,9 +745,11 @@ private fun PlaylistDetailView(
     isOfflineOnlyMode: Boolean = false,
     networkPolicyManager: NetworkPolicyManager? = null,
     onPlayOnlineTrack: ((OnlineTrack) -> Unit)? = null,
-    onRemoveOnlineTrack: ((String) -> Unit)? = null
+    onRemoveOnlineTrack: ((String) -> Unit)? = null,
+    onDeleteSong: ((Song) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val downloadIndex = remember { DownloadIndex.getInstance(context) }
     var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
     val activeDownloads by SongDownloadService.activeDownloads.collectAsState()
 
@@ -963,7 +971,8 @@ private fun PlaylistDetailView(
                             isCurrent = isCurrent,
                             isFavorite = isFavorite,
                             onClick = { onSongClick(song) },
-                            onToggleFavorite = { onToggleFavorite(song.id) }
+                            onToggleFavorite = { onToggleFavorite(song.id) },
+                            onDelete = onDeleteSong?.let { delete -> { delete(song) } }
                         )
                     }
                 }
@@ -980,11 +989,17 @@ private fun PlaylistDetailView(
                     }
 
                     items(onlineTracks, key = { it.id }) { track ->
-                        val localMatch = allSongs.find { local -> isDownloadedCopyOf(local.title, local.artist, track.title, track.artist) }
+                        // Only the file downloaded from this exact video counts as this track;
+                        // another recording with the same title/artist is just "similar"
+                        val localMatch = downloadedCopyOf(track, allSongs, downloadIndex)
+                        val hasSimilarLocal = localMatch == null && allSongs.any { local ->
+                            isDownloadedCopyOf(local.title, local.artist, track.title, track.artist)
+                        }
 
                         OnlineTrackRowItem(
                             track = track,
                             isLocallyAvailable = (localMatch != null),
+                            hasSimilarLocal = hasSimilarLocal,
                             downloadProgress = activeDownloads[track.id],
                             onTrackClick = {
                                 if (localMatch != null) {
@@ -1054,6 +1069,8 @@ private fun PlaylistDetailView(
 private fun OnlineTrackRowItem(
     track: OnlineTrack,
     isLocallyAvailable: Boolean = false,
+    // Another song with the same title and artist is on the phone (not this exact video)
+    hasSimilarLocal: Boolean = false,
     // 0..1 while SongDownloadService is downloading this track, null otherwise
     downloadProgress: Float? = null,
     onTrackClick: () -> Unit,
@@ -1134,7 +1151,13 @@ private fun OnlineTrackRowItem(
                         }
                     ) {
                         Text(
-                            text = if (isLocallyAvailable) "💾 Local Ready" else "🌐 Online",
+                            text = when {
+                                isLocallyAvailable -> "💾 Local Ready"
+                                hasSimilarLocal -> "🌐 Online · similar on phone"
+                                else -> "🌐 Online"
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.labelSmall,
                             color = if (isLocallyAvailable) {
                                 MaterialTheme.colorScheme.onTertiaryContainer
@@ -1225,3 +1248,8 @@ private fun OnlineTrackRowItem(
         }
     }
 }
+
+// The file the app downloaded from exactly this online track, if it's still on the phone
+private fun downloadedCopyOf(track: OnlineTrack, allSongs: List<Song>, downloadIndex: DownloadIndex): Song? =
+    downloadIndex.downloadedIdFor(track.webUrl.ifBlank { track.id })
+        ?.let { id -> allSongs.find { it.id == id } }

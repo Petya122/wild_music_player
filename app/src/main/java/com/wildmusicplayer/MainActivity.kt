@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +43,11 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import com.wildmusicplayer.data.DownloadIndex
+import com.wildmusicplayer.data.SongDeleter
 import com.wildmusicplayer.data.NetworkPolicyManager
+import com.wildmusicplayer.data.OnlineTrack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -56,6 +61,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -273,6 +279,11 @@ fun MusicPlayerApp(
     }
 
     val playlistRepository = remember { PlaylistRepository(context) }
+    val downloadIndex = remember { DownloadIndex.getInstance(context) }
+    // The MediaStore ID of the file downloaded from exactly this online track, if any
+    val downloadedIdFor: (OnlineTrack) -> Long? = { track ->
+        downloadIndex.downloadedIdFor(track.webUrl.ifBlank { track.id })
+    }
     val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
     val recentlyPlayedIds by playlistRepository.recentlyPlayedIds.collectAsState()
     val customPlaylists by playlistRepository.customPlaylists.collectAsState()
@@ -281,7 +292,7 @@ fun MusicPlayerApp(
     // Whenever local songs reload, check if any online tracks in playlists can be migrated to local files
     LaunchedEffect(songs) {
         if (songs.isNotEmpty()) {
-            playlistRepository.autoMigrateDownloadedTracks(songs)
+            playlistRepository.autoMigrateDownloadedTracks(songs, downloadedIdFor)
         }
     }
 
@@ -290,7 +301,7 @@ fun MusicPlayerApp(
         if (completedTrackIds.isNotEmpty() && hasPermission) {
             delay(1200) // Allow MediaScanner to finish indexing the newly written file
             songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
-            playlistRepository.autoMigrateDownloadedTracks(songs)
+            playlistRepository.autoMigrateDownloadedTracks(songs, downloadedIdFor)
         }
     }
 
@@ -334,6 +345,46 @@ fun MusicPlayerApp(
             val targetList = if (shuffle) list.shuffled() else list
             addRecentlyPlayed(targetList.first())
             controllerManager.playQueue(targetList, 0)
+        }
+    }
+
+    // ---- Deleting songs from the phone ----
+    val songDeleter = remember { SongDeleter(context) }
+    var songAwaitingConfirm by remember { mutableStateOf<Song?>(null) } // Android 10 and older: app's own dialog
+    var songAwaitingSystem by remember { mutableStateOf<Song?>(null) } // waiting on Android's dialog
+
+    val afterSongDeleted: (Song) -> Unit = { song ->
+        if (controllerManager.currentSong.value?.id == song.id) controllerManager.skipToNext()
+        playlistRepository.removeSongEverywhere(song.id)
+        downloadIndex.forgetMediaStoreId(song.id)
+        songs = songs.filter { it.id != song.id }
+        Toast.makeText(context, "Deleted \"${song.title}\"", Toast.LENGTH_SHORT).show()
+    }
+
+    val deletePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val song = songAwaitingSystem
+        songAwaitingSystem = null
+        if (song == null || result.resultCode != android.app.Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            afterSongDeleted(song) // Android's dialog already deleted it
+        } else if (songDeleter.deleteDirectly(song) == SongDeleter.Result.Deleted) {
+            afterSongDeleted(song) // Android 10: allowed now, so try again
+        } else {
+            Toast.makeText(context, "Couldn't delete \"${song.title}\"", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val launchSystemDelete: (Song, android.content.IntentSender) -> Unit = { song, sender ->
+        songAwaitingSystem = song
+        deletePermissionLauncher.launch(IntentSenderRequest.Builder(sender).build())
+    }
+
+    val requestDeleteSong: (Song) -> Unit = { song ->
+        if (song.id > 0) {
+            val systemRequest = songDeleter.systemDeleteRequest(listOf(song))
+            if (systemRequest != null) launchSystemDelete(song, systemRequest) else songAwaitingConfirm = song
         }
     }
 
@@ -573,7 +624,8 @@ fun MusicPlayerApp(
                                 bottomPadding = contentBottomPadding,
                                 onSongClick = { selectedSong -> playSong(selectedSong, songs) },
                                 onShuffleAll = shuffleAll,
-                                onToggleFavorite = { playlistRepository.toggleFavorite(it) }
+                                onToggleFavorite = { playlistRepository.toggleFavorite(it) },
+                                onDeleteSong = requestDeleteSong
                             )
                         }
                         NavigationTab.SEARCH -> {
@@ -583,7 +635,8 @@ fun MusicPlayerApp(
                                 currentPlayingSongId = currentSong?.id,
                                 bottomPadding = contentBottomPadding,
                                 onSongClick = playSong,
-                                onToggleFavorite = { playlistRepository.toggleFavorite(it) }
+                                onToggleFavorite = { playlistRepository.toggleFavorite(it) },
+                                onDeleteSong = requestDeleteSong
                             )
                         }
                         NavigationTab.PLAYLISTS -> {
@@ -602,7 +655,8 @@ fun MusicPlayerApp(
                                 networkPolicyManager = networkPolicyManager,
                                 onRemoveOnlineTrack = { playlistId, trackId ->
                                     playlistRepository.removeOnlineTrackFromPlaylist(playlistId, trackId)
-                                }
+                                },
+                                onDeleteSong = requestDeleteSong
                             )
                         }
                         NavigationTab.DOWNLOADER -> {
@@ -650,6 +704,31 @@ fun MusicPlayerApp(
                 bottomBarHeight = 80.dp,
                 isExpanded = isPlayerExpanded,
                 onExpandedChange = { isPlayerExpanded = it }
+            )
+        }
+
+        // Delete confirmation on Android 10 and older (newer versions show Android's own dialog)
+        songAwaitingConfirm?.let { song ->
+            AlertDialog(
+                onDismissRequest = { songAwaitingConfirm = null },
+                title = { Text("Delete song?") },
+                text = { Text("\"${song.title}\" will be removed from your phone. This can't be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        songAwaitingConfirm = null
+                        when (val result = songDeleter.deleteDirectly(song)) {
+                            SongDeleter.Result.Deleted -> afterSongDeleted(song)
+                            is SongDeleter.Result.NeedsPermission -> launchSystemDelete(song, result.intentSender)
+                            SongDeleter.Result.Failed ->
+                                Toast.makeText(context, "Couldn't delete \"${song.title}\"", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { songAwaitingConfirm = null }) { Text("Cancel") }
+                }
             )
         }
 

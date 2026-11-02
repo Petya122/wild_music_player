@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
@@ -59,7 +60,8 @@ fun SongsScreen(
     bottomPadding: Dp,
     onSongClick: (Song) -> Unit,
     onShuffleAll: () -> Unit,
-    onToggleFavorite: (Long) -> Unit
+    onToggleFavorite: (Long) -> Unit,
+    onDeleteSong: ((Song) -> Unit)? = null
 ) {
     var sortOrder by remember { mutableStateOf(SongSortOrder.DEFAULT) }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -183,7 +185,8 @@ fun SongsScreen(
                     isCurrent = isCurrent,
                     isFavorite = isFavorite,
                     onClick = { onSongClick(song) },
-                    onToggleFavorite = { onToggleFavorite(song.id) }
+                    onToggleFavorite = { onToggleFavorite(song.id) },
+                    onDelete = onDeleteSong?.let { delete -> { delete(song) } }
                 )
             }
         }
@@ -196,8 +199,10 @@ fun SongRowItem(
     isCurrent: Boolean,
     isFavorite: Boolean,
     onClick: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -246,6 +251,38 @@ fun SongRowItem(
                 tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.size(20.dp)
             )
+        }
+
+        if (onDelete != null) {
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Delete from phone", color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        }
+                    )
+                }
+            }
         }
     }
 }

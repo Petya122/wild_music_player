@@ -95,14 +95,19 @@ fun WhatsNewDialog(
                         desc = "A local song now only stands in for an online playlist track if the artist matches too, so a remix with the same title no longer replaces the original."
                     )
                     ChangelogItem(
-                        emoji = "⬇️",
-                        title = "Download Progress in Playlists",
-                        desc = "Downloading an online track from a playlist now shows a progress bar and percentage right on the track."
+                        emoji = "🗑️",
+                        title = "Delete Songs",
+                        desc = "Tap ⋮ on any song in Songs, Search or a playlist and choose Delete from phone. It's also removed from your favorites and playlists."
                     )
                     ChangelogItem(
-                        emoji = "🔊",
-                        title = "dB Boost Buttons That Fit",
-                        desc = "Off · +3 · +6 · +9 · +12 now fit on one line in Settings too, not just in the player."
+                        emoji = "🎯",
+                        title = "Playlists Keep the Version You Picked",
+                        desc = "An online playlist track only counts as downloaded when that exact video was downloaded. Another recording with the same title shows as \"similar on phone\" and can still be downloaded."
+                    )
+                    ChangelogItem(
+                        emoji = "⬇️",
+                        title = "Download Progress in Playlists",
+                        desc = "Downloading an online track from a playlist shows a progress bar and percentage right on the track."
                     )
                 }
 

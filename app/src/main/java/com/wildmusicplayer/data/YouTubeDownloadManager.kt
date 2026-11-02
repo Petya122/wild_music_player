@@ -1,5 +1,6 @@
 package com.wildmusicplayer.data
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
@@ -308,6 +309,9 @@ class YouTubeDownloadManager(private val context: Context) {
                 ?: return@withContext Result.failure(Exception("Audio stream URL is unavailable."))
 
             val metadata = trackMetadataFor(track)
+            // Remembered with the saved file, so playlists know this exact video is on the phone
+            val videoId = youTubeVideoId(track.webUrl) ?: youTubeVideoId(track.id)
+            val downloadIndex = DownloadIndex.getInstance(context)
 
             // 1. Download the audio into the cache (first 90% of the progress bar)
             val request = OkHttpRequest.Builder()
@@ -367,6 +371,7 @@ class YouTubeDownloadManager(private val context: Context) {
                     throw e
                 }
 
+                videoId?.let { downloadIndex.record(it, ContentUris.parseId(uri)) }
                 "${Environment.DIRECTORY_MUSIC}/WildMusic/$fileName"
             } else {
                 val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "WildMusic")
@@ -386,9 +391,12 @@ class YouTubeDownloadManager(private val context: Context) {
                 MediaScannerConnection.scanFile(
                     context,
                     arrayOf(targetFile.absolutePath),
-                    arrayOf("audio/mp4"),
-                    null
-                )
+                    arrayOf("audio/mp4")
+                ) { _, scannedUri ->
+                    if (videoId != null && scannedUri != null) {
+                        downloadIndex.record(videoId, ContentUris.parseId(scannedUri))
+                    }
+                }
 
                 targetFile.absolutePath
             }

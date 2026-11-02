@@ -154,6 +154,23 @@ class PlaylistRepository(context: Context) {
         prefs.edit().putString(KEY_RECENTLY_PLAYED, jsonArray.toString()).apply()
     }
 
+    /** A song was deleted from the phone: drop it from favorites, recently played and every playlist. */
+    fun removeSongEverywhere(songId: Long) {
+        if (songId in _favoriteSongIds.value) {
+            val favorites = _favoriteSongIds.value - songId
+            _favoriteSongIds.value = favorites
+            prefs.edit().putStringSet(KEY_FAVORITES, favorites.map { it.toString() }.toSet()).apply()
+        }
+        if (songId in _recentlyPlayedIds.value) {
+            removeRecentlyPlayed(songId)
+        }
+        if (_customPlaylists.value.any { songId in it.songIds }) {
+            val updated = _customPlaylists.value.map { it.copy(songIds = it.songIds - songId) }
+            _customPlaylists.value = updated
+            savePlaylists(updated)
+        }
+    }
+
     fun clearRecentlyPlayed() {
         _recentlyPlayedIds.value = emptyList()
         prefs.edit().remove(KEY_RECENTLY_PLAYED).apply()
@@ -238,12 +255,13 @@ class PlaylistRepository(context: Context) {
 
     /**
      * Inspects all custom playlists containing online tracks.
-     * If an online track's title matches a downloaded local song,
+     * If the app downloaded that exact video ([downloadedIdFor] returns its MediaStore ID),
      * it migrates the track into [Playlist.songIds] as a native offline song
-     * and removes it from [Playlist.onlineTracks].
+     * and removes it from [Playlist.onlineTracks]. Songs that merely share the title and
+     * artist (another recording, a remix) never replace the track you picked.
      * Returns the total number of migrated tracks.
      */
-    fun autoMigrateDownloadedTracks(localSongs: List<Song>): Int {
+    fun autoMigrateDownloadedTracks(localSongs: List<Song>, downloadedIdFor: (OnlineTrack) -> Long?): Int {
         if (localSongs.isEmpty()) return 0
         var migratedCount = 0
         var anyChanged = false
@@ -256,7 +274,7 @@ class PlaylistRepository(context: Context) {
                 val newSongIds = playlist.songIds.toMutableList()
 
                 for (online in playlist.onlineTracks) {
-                    val match = localSongs.find { local -> isDownloadedCopyOf(local.title, local.artist, online.title, online.artist) }
+                    val match = downloadedIdFor(online)?.let { id -> localSongs.find { it.id == id } }
 
                     if (match != null) {
                         if (!newSongIds.contains(match.id)) {
