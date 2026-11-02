@@ -1,7 +1,6 @@
 package com.wildmusicplayer.ui.components
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,12 +10,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,6 +32,83 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.wildmusicplayer.R
 
+private class ChangelogEntry(val emoji: String, val title: String, val desc: String)
+
+private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry>)
+
+// Newest first. Add the next release at the top; older notes stay below as history.
+private val releaseHistory = listOf(
+    ReleaseNotes(
+        "0.7.4", listOf(
+            ChangelogEntry("📜", "Scrollable Update History", "This list now scrolls, and the notes of earlier versions stay below the newest one.")
+        )
+    ),
+    ReleaseNotes(
+        "0.7.3", listOf(
+            ChangelogEntry("🗑️", "Delete Songs", "Tap ⋮ on any song in Songs, Search or a playlist and choose Delete from phone. It's also removed from your favorites and playlists."),
+            ChangelogEntry("🎯", "Playlists Keep the Version You Picked", "An online playlist track only counts as downloaded when that exact video was downloaded. Another recording with the same title shows as \"similar on phone\" and can still be downloaded.")
+        )
+    ),
+    ReleaseNotes(
+        "0.7.2", listOf(
+            ChangelogEntry("⬇️", "Download Progress in Playlists", "Downloading an online track from a playlist shows a progress bar and percentage right on the track."),
+            ChangelogEntry("🔊", "dB Boost Buttons That Fit", "Off · +3 · +6 · +9 · +12 fit on one line in Settings and in the player.")
+        )
+    ),
+    ReleaseNotes(
+        "0.7.1", listOf(
+            ChangelogEntry("🔎", "Search in Fix Song Tags", "Wrong or missing match? Tap \"Not right? Search…\" on any song and type the artist and title yourself, in Songs or Videos."),
+            ChangelogEntry("🎤", "Artist-Aware Playlist Matching", "A remix with the same title no longer replaces the original in your playlists.")
+        )
+    ),
+    ReleaseNotes(
+        "0.7.0", listOf(
+            ChangelogEntry("🚗", "Resume From Your Car", "Press Play on your car radio or headset (or switch the radio to Media) and the music continues where you stopped, even if the app was closed."),
+            ChangelogEntry("🔵", "Resume When Bluetooth Reconnects", "If music paused because the car or headphones disconnected, it starts again when they reconnect within 2 hours."),
+            ChangelogEntry("⏯️", "Pick Up Where You Left Off", "Opening the app brings back your last queue, paused at the same spot. Stop clears it; Exit keeps it for the car.")
+        )
+    ),
+    ReleaseNotes(
+        "0.6.0", listOf(
+            ChangelogEntry("🏷️", "Artist & Title on Downloads", "Downloaded songs carry their real title, artist and album inside the file, so the app, lock screen and car radio show them properly."),
+            ChangelogEntry("🖼️", "Cover Art on Downloads", "Every download gets its own square cover art, saved into the song file itself."),
+            ChangelogEntry("🛠️", "Fix Older Downloads", "Settings → Fix Downloaded Song Tags adds the artist and cover to songs downloaded before this version.")
+        )
+    ),
+    ReleaseNotes(
+        "0.5.3", listOf(
+            ChangelogEntry("🎵", "YouTube Music Song Search", "Search looks in YouTube Music's Songs by default, so you get the official track with its real artist."),
+            ChangelogEntry("🌟", "Smarter Best Match", "Results are ranked by how well they match your words; sped up, cover, live and remix versions drop down unless you search for them.")
+        )
+    ),
+    ReleaseNotes(
+        "0.5.2", listOf(
+            ChangelogEntry("🔁", "Hybrid Playlists Play Straight Through", "Play All, Shuffle and tapping any track queue the whole playlist, local and online songs together."),
+            ChangelogEntry("📦", "Smaller, Faster App", "The app is optimized and shrunk at build time, so updates download faster.")
+        )
+    ),
+    ReleaseNotes(
+        "0.5.1", listOf(
+            ChangelogEntry("🔊", "In-Player Volume & Presets", "Control volume from the player with Mute and 25 / 50 / 75 / 100% presets."),
+            ChangelogEntry("🚀", "Decibel Boost", "Gain up to +12 dB beyond 100% for quiet recordings and low car Bluetooth volume."),
+            ChangelogEntry("⚖️", "Audio Normalization", "Levels playback volume to avoid jarring jumps between tracks.")
+        )
+    ),
+    ReleaseNotes(
+        "0.5.0", listOf(
+            ChangelogEntry("🌐", "Offline & Online Mode Toggle", "Switch between 100% offline playback and online streaming & search with one tap."),
+            ChangelogEntry("🔀", "Hybrid Playlists", "Add YouTube songs to playlists alongside the music on your phone."),
+            ChangelogEntry("⚡", "1-Tap Sync", "Download a playlist's online songs in the background for offline listening.")
+        )
+    ),
+    ReleaseNotes(
+        "0.4.6", listOf(
+            ChangelogEntry("⏸️", "Update on Hold & Install Later", "Downloaded updates can be installed right away or kept for later."),
+            ChangelogEntry("📥", "Background Song Downloads", "Songs keep downloading when the app is in the background or closed.")
+        )
+    )
+)
+
 @Composable
 fun WhatsNewDialog(
     versionName: String,
@@ -38,7 +118,7 @@ fun WhatsNewDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(vertical = 24.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
@@ -73,45 +153,36 @@ fun WhatsNewDialog(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "Here's what's new in this release:",
+                    text = "What's new, with earlier updates below",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
+                // Only the notes scroll; the header and the button always stay on screen
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    ChangelogItem(
-                        emoji = "🔎",
-                        title = "Search in Fix Song Tags",
-                        desc = "Wrong or missing match? Tap \"Not right? Search…\" on any song and type the artist and title yourself, in Songs or Videos. Up to 10 suggestions per song."
-                    )
-                    ChangelogItem(
-                        emoji = "🎤",
-                        title = "Artist-Aware Playlist Matching",
-                        desc = "A local song now only stands in for an online playlist track if the artist matches too, so a remix with the same title no longer replaces the original."
-                    )
-                    ChangelogItem(
-                        emoji = "🗑️",
-                        title = "Delete Songs",
-                        desc = "Tap ⋮ on any song in Songs, Search or a playlist and choose Delete from phone. It's also removed from your favorites and playlists."
-                    )
-                    ChangelogItem(
-                        emoji = "🎯",
-                        title = "Playlists Keep the Version You Picked",
-                        desc = "An online playlist track only counts as downloaded when that exact video was downloaded. Another recording with the same title shows as \"similar on phone\" and can still be downloaded."
-                    )
-                    ChangelogItem(
-                        emoji = "⬇️",
-                        title = "Download Progress in Playlists",
-                        desc = "Downloading an online track from a playlist shows a progress bar and percentage right on the track."
-                    )
+                    releaseHistory.forEachIndexed { index, release ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                            )
+                        }
+                        VersionHeader(version = release.version, isLatest = index == 0)
+                        release.entries.forEach { entry ->
+                            ChangelogItem(emoji = entry.emoji, title = entry.title, desc = entry.desc)
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Button(
                     onClick = onDismiss,
@@ -123,6 +194,32 @@ fun WhatsNewDialog(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VersionHeader(version: String, isLatest: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "v$version",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = if (isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (isLatest) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    text = "Latest",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
             }
         }
     }
