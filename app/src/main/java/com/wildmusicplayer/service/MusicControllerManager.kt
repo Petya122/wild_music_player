@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.toMediaItem
 import com.wildmusicplayer.model.Song
 import kotlinx.coroutines.CoroutineScope
@@ -74,10 +75,29 @@ class MusicControllerManager(private val context: Context) {
                 syncPlayerState()
             }
             mediaController?.let { controller ->
-                pendingAction?.invoke(controller)
+                val action = pendingAction
                 pendingAction = null
+                when {
+                    action != null -> action(controller)
+                    controller.mediaItemCount == 0 -> restoreSavedQueue(controller)
+                }
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    /** Opening the app with nothing loaded brings back the last queue, paused where it stopped. */
+    private fun restoreSavedQueue(controller: MediaController) {
+        val offline = NetworkPolicyManager.getInstance(context).isOfflineOnlyMode
+        val saved = QueueStore.forContext(context).load()
+            ?.let { if (offline) it.withoutOnlineSongs() else it }
+            ?: return
+
+        val songs = saved.songs.map { it.toSong() }
+        currentPlaylist = songs
+        controller.shuffleModeEnabled = saved.shuffle
+        controller.repeatMode = saved.repeatMode
+        controller.setMediaItems(songs.map { it.toMediaItem() }, saved.index, saved.positionMs)
+        controller.prepare()
     }
 
     /** Runs [action] now, or right after the controller connects if it hasn't yet. */
@@ -228,6 +248,7 @@ class MusicControllerManager(private val context: Context) {
      * while keeping the controller connected for future plays.
      */
     fun stopPlayback() {
+        // Clearing the queue also makes PlaybackService forget the saved one, so the car won't bring it back
         stopProgressUpdates()
         mediaController?.stop()
         mediaController?.clearMediaItems()
@@ -239,8 +260,9 @@ class MusicControllerManager(private val context: Context) {
 
     fun stopAndShutdown() {
         stopProgressUpdates()
+        // stop() keeps the queue and position, so PlaybackService saves them and the car's
+        // Play button can resume after exiting (unlike stopPlayback, which forgets the queue)
         mediaController?.stop()
-        mediaController?.clearMediaItems()
         mediaController?.release()
         mediaController = null
         _isConnected.value = false

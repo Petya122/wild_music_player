@@ -85,24 +85,24 @@ fun WhatsNewDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ChangelogItem(
-                        emoji = "🏷️",
-                        title = "Artist & Title on Downloads",
-                        desc = "Downloaded songs now carry their real title, artist and album inside the file, so the app, lock screen and your car radio show them properly."
+                        emoji = "🚗",
+                        title = "Resume From Your Car",
+                        desc = "Press Play on your car radio or headset (or switch the radio to Media) and the music continues where you stopped, even if the app was closed."
                     )
                     ChangelogItem(
-                        emoji = "🖼️",
-                        title = "Cover Art on Downloads",
-                        desc = "Every download gets its own square cover art, saved into the song file itself."
+                        emoji = "🔵",
+                        title = "Resume When Bluetooth Reconnects",
+                        desc = "If music paused because the car or headphones disconnected, it starts again when they reconnect within 2 hours."
                     )
                     ChangelogItem(
-                        emoji = "🛠️",
-                        title = "Fix Older Downloads",
-                        desc = "Settings → Fix Downloaded Song Tags finds songs saved without an artist, matches them on YouTube Music and adds the tags and cover. Playlists and favorites stay intact."
+                        emoji = "⏯️",
+                        title = "Pick Up Where You Left Off",
+                        desc = "Opening the app brings back your last queue, paused at the same spot. The Stop button clears it; Exit keeps it for the car."
                     )
                     ChangelogItem(
-                        emoji = "📂",
-                        title = "Cleaner File Names",
-                        desc = "New downloads are saved as \"Artist - Title.m4a\" instead of the full video name."
+                        emoji = "⏭️",
+                        title = "No More Stuck Queues",
+                        desc = "A song that can't play (deleted file, unavailable stream) is skipped instead of stopping the music. Settings → Car & Bluetooth has both resume options."
                     )
                 }
 

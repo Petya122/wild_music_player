@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Smartphone
@@ -75,6 +76,7 @@ import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.AudioEffectsManager
 import com.wildmusicplayer.data.DownloadNetworkMode
 import com.wildmusicplayer.data.NetworkPolicyManager
+import com.wildmusicplayer.data.ResumeSettings
 import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.UpdateInfo
 import com.wildmusicplayer.data.UpdateResult
@@ -105,6 +107,10 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     var showTagRepair by remember { mutableStateOf(false) }
+    val appContext = LocalContext.current.applicationContext
+    val resumeSettings = remember { ResumeSettings(appContext) }
+    var resumeFromPlayButton by remember { mutableStateOf(resumeSettings.resumeFromPlayButton) }
+    var resumeOnBluetooth by remember { mutableStateOf(resumeSettings.resumeOnBluetoothReconnect) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val updateChecker = remember { UpdateChecker.getInstance(context) }
@@ -268,6 +274,56 @@ fun SettingsScreen(
                         onCheckedChange = onKeepScreenOnToggled
                     )
                 }
+            }
+        }
+
+        // Section: Car & Bluetooth Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.DirectionsCar,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Car & Bluetooth",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                SettingsSwitchRow(
+                    title = "Resume with Play Button",
+                    description = "Pressing Play on your car radio or headset continues where you left off, even if the app was closed",
+                    checked = resumeFromPlayButton,
+                    onCheckedChange = { enabled ->
+                        resumeFromPlayButton = enabled
+                        resumeSettings.resumeFromPlayButton = enabled
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                SettingsSwitchRow(
+                    title = "Resume When Bluetooth Reconnects",
+                    description = "If music paused because Bluetooth disconnected, it starts again when you reconnect within 2 hours (while the app is still running)",
+                    checked = resumeOnBluetooth,
+                    onCheckedChange = { enabled ->
+                        resumeOnBluetooth = enabled
+                        resumeSettings.resumeOnBluetoothReconnect = enabled
+                    }
+                )
             }
         }
 
@@ -1409,6 +1465,40 @@ fun SettingsScreen(
                     Text("Keep on Hold")
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
         )
     }
 }

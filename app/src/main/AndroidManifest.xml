@@ -54,6 +54,16 @@
             </intent-filter>
         </service>
 
+        <!-- Car radio / headset Play button: starts PlaybackService and resumes the last queue
+             (PlaybackService.onPlaybackResumption), even when the app was closed -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!-- Background Song Download Service (persists until completion, then shuts off) -->
         <service
             android:name=".service.SongDownloadService"
