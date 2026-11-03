@@ -71,8 +71,12 @@ jobs:
       - name: Report Failures as Annotations
         if: failure()
         run: |
-          { grep -E "^e: " gradle-ios.log xcode-ios.log; grep -E "error:|What went wrong|FAILED|Exception" gradle-ios.log xcode-ios.log; } 2>/dev/null | head -n 25 | while IFS= read -r line; do
+          { grep -hE "^e: " gradle-ios.log xcode-ios.log; grep -hiE "error|What went wrong|FAILED|Exception" gradle-ios.log xcode-ios.log; } 2>/dev/null | grep -v "^\s*$" | awk '!seen[$0]++' | head -n 30 | while IFS= read -r line; do
             echo "::error::$line"
+          done
+          # The end of the Xcode log usually names the failing command
+          [ -f xcode-ios.log ] && tail -n 25 xcode-ios.log | grep -v "^\s*$" | while IFS= read -r line; do
+            echo "::warning::$line"
           done
           for f in shared/build/test-results/iosSimulatorArm64Test/*.xml; do
             [ -f "$f" ] && grep -A2 "<failure" "$f" | head -n 6 | tr '\n' ' ' | sed 's/^/::error::/' && echo
