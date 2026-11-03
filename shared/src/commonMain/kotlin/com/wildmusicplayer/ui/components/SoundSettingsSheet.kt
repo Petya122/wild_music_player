@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.components
 
+import kotlin.math.abs
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -190,7 +191,7 @@ fun SoundSettingsSheet(
             ) {
                 val presets = listOf(0.25f to "25%", 0.50f to "50%", 0.75f to "75%", 1.00f to "100%")
                 presets.forEach { (targetVol, label) ->
-                    val isSelected = !isMuted && Math.abs(volume - targetVol) < 0.03f
+                    val isSelected = !isMuted && abs(volume - targetVol) < 0.03f
                     FilterChip(
                         selected = isSelected,
                         onClick = { audioEffectsManager.setVolume(targetVol) },
