@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import com.wildmusicplayer.ui.components.QueueSheet
+import com.wildmusicplayer.ui.QueueActions
+import com.wildmusicplayer.ui.LocalQueueActions
 import com.wildmusicplayer.service.AndroidTrackDownloader
 import com.wildmusicplayer.ui.LocalShowMessage
 import com.wildmusicplayer.ui.LocalAudioEffects
@@ -149,7 +152,8 @@ class MainActivity : ComponentActivity() {
             val appContext = LocalContext.current.applicationContext
             CompositionLocalProvider(
                 LocalShowMessage provides { message -> Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() },
-                LocalAudioEffects provides AudioEffectsManager.getInstance(appContext)
+                LocalAudioEffects provides AudioEffectsManager.getInstance(appContext),
+                LocalQueueActions provides QueueActions(controllerManager::playNext, controllerManager::addToQueue)
             ) {
             WildMusicPlayerTheme(themeMode = currentTheme) {
                 Surface(
@@ -203,6 +207,7 @@ fun MusicPlayerApp(
     var searchQuery by remember { mutableStateOf("") }
     val hasPermission by library.hasPermission.collectAsState()
     var isPlayerExpanded by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     var isSettingsOpen by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var isSplashVisible by remember { mutableStateOf(true) }
@@ -652,7 +657,22 @@ fun MusicPlayerApp(
                 onToggleFavorite = toggleFavorite,
                 bottomBarHeight = 80.dp,
                 isExpanded = isPlayerExpanded,
-                onExpandedChange = { isPlayerExpanded = it }
+                onExpandedChange = { isPlayerExpanded = it },
+                onShowQueue = { showQueue = true }
+            )
+        }
+
+        if (showQueue) {
+            val queue by controllerManager.queue.collectAsState()
+            val queuePosition by controllerManager.currentQueuePosition.collectAsState()
+            QueueSheet(
+                queue = queue,
+                currentPosition = queuePosition,
+                isShuffleEnabled = isShuffleEnabled,
+                onPlayItem = controllerManager::skipToQueueItem,
+                onRemoveItem = controllerManager::removeQueueItem,
+                onMoveItem = controllerManager::moveQueueItem,
+                onDismiss = { showQueue = false }
             )
         }
 

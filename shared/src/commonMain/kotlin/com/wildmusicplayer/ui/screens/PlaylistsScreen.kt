@@ -20,6 +20,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import com.wildmusicplayer.ui.LocalQueueActions
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.filled.PlaylistRemove
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
@@ -767,6 +773,7 @@ private fun PlaylistDetailView(
     onRemoveFromPlaylist: ((Song) -> Unit)? = null
 ) {
     val showMessage = LocalShowMessage.current
+    val queueActions = LocalQueueActions.current
     var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
     val activeDownloads by (downloader?.activeDownloads ?: remember { MutableStateFlow(emptyMap()) }).collectAsState()
 
@@ -990,6 +997,10 @@ private fun PlaylistDetailView(
                             isDownloadedCopyOf(local.title, local.artist, track.title, track.artist)
                         }
 
+                        // What "Play next" / "Add to queue" queue: the downloaded file, or the stream when online
+                        val queueSong = localMatch ?: track.takeIf { !isOfflineOnlyMode && it.webUrl.isNotBlank() }
+                            ?.let { Song.fromOnline(it.title, it.artist, it.webUrl, it.durationSeconds, it.thumbnailUrl) }
+
                         OnlineTrackRowItem(
                             track = track,
                             isLocallyAvailable = (localMatch != null),
@@ -1012,7 +1023,15 @@ private fun PlaylistDetailView(
                             },
                             onRemoveClick = if (onRemoveOnlineTrack != null) {
                                 { onRemoveOnlineTrack(track.id) }
-                            } else null
+                            } else null,
+                            onPlayNext = queueSong?.let { queued -> queueActions?.let { actions -> {
+                                actions.playNext(queued)
+                                showMessage("Playing next: ${track.title}")
+                            } } },
+                            onAddToQueue = queueSong?.let { queued -> queueActions?.let { actions -> {
+                                actions.addToQueue(queued)
+                                showMessage("Added to queue: ${track.title}")
+                            } } }
                         )
                     }
                 }
@@ -1044,8 +1063,11 @@ private fun OnlineTrackRowItem(
     downloadProgress: Float? = null,
     onTrackClick: () -> Unit,
     onDownloadClick: () -> Unit,
-    onRemoveClick: (() -> Unit)? = null
+    onRemoveClick: (() -> Unit)? = null,
+    onPlayNext: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1200,25 +1222,45 @@ private fun OnlineTrackRowItem(
                 }
             }
 
-            // Remove from playlist
-            if (onRemoveClick != null) {
-                IconButton(
-                    onClick = onRemoveClick,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Remove from Playlist",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
-                    )
+            if (onRemoveClick != null || onPlayNext != null || onAddToQueue != null) {
+                Box {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More options",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        if (onPlayNext != null) {
+                            DropdownMenuItem(
+                                text = { Text("Play next") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null) },
+                                onClick = { menuOpen = false; onPlayNext() }
+                            )
+                        }
+                        if (onAddToQueue != null) {
+                            DropdownMenuItem(
+                                text = { Text("Add to queue") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null) },
+                                onClick = { menuOpen = false; onAddToQueue() }
+                            )
+                        }
+                        if (onRemoveClick != null) {
+                            DropdownMenuItem(
+                                text = { Text("Remove from this playlist") },
+                                leadingIcon = { Icon(Icons.Default.PlaylistRemove, contentDescription = null) },
+                                onClick = { menuOpen = false; onRemoveClick() }
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-// The file the app downloaded from exactly this online track, if it's still on the phone
 /**
  * Starts background downloads of [tracks], or tells the user why they can't start.
  * [action] completes "Switch to Online Mode to …". Returns true if the downloads started.
@@ -1242,6 +1284,7 @@ private fun startDownloads(
     return false
 }
 
+// The file the app downloaded from exactly this online track, if it's still on the phone
 private fun downloadedCopyOf(track: OnlineTrack, allSongs: List<Song>, downloadIndex: DownloadIndex?): Song? =
     downloadIndex?.downloadedIdFor(track.webUrl.ifBlank { track.id })
         ?.let { id -> allSongs.find { it.id == id } }

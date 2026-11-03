@@ -42,6 +42,7 @@ kotlin {
             api(compose.ui)
             api(libs.compose.material.icons.extended)
             api(libs.coil.compose)
+            implementation(libs.reorderable)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)

@@ -33,6 +33,26 @@ interface PlayerController {
     /** Stops playback and clears the queue (the player bar disappears). */
     fun stopPlayback()
 
+    /** The queue in the order it will play (shuffled order when shuffle is on). */
+    val queue: StateFlow<List<QueueItem>>
+
+    /** Position of the playing song in [queue], or -1 when nothing is loaded. */
+    val currentQueuePosition: StateFlow<Int>
+
+    /** Plays [song] right after the current one (also with shuffle on). Starts playback if nothing is queued. */
+    fun playNext(song: Song)
+
+    /** Plays [song] after everything already queued (also with shuffle on). */
+    fun addToQueue(song: Song)
+
+    /** Moves a song within [queue]; only while shuffle is off, when the queue order is the list order. */
+    fun moveQueueItem(from: Int, to: Int)
+
+    fun removeQueueItem(position: Int)
+
+    /** Jumps to the song at [position] in [queue] and plays it. */
+    fun skipToQueueItem(position: Int)
+
     /** Queued online songs that have been downloaded since play from the file instead. */
     fun useDownloadedCopies(downloadIndex: DownloadIndex)
 
@@ -60,3 +80,6 @@ interface TrackDownloader {
 
     fun start(tracks: List<OnlineTrack>)
 }
+
+/** One song in the play queue; [playerIndex] is its place in the player's own (unshuffled) list. */
+data class QueueItem(val song: Song, val playerIndex: Int)

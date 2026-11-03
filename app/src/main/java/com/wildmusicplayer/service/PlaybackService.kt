@@ -149,6 +149,8 @@ class PlaybackService : MediaSessionService() {
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .setHandleAudioBecomingNoisy(true)
             .build()
+            // "Play next" and "Add to queue" keep their place even with shuffle on
+            .apply { setShuffleOrder(PlayNextShuffleOrder()) }
 
         val sessionActivityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP

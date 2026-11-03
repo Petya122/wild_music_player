@@ -63,8 +63,8 @@ class IosPlayerController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val player = AVPlayer()
 
-    private var queue: List<Song> = emptyList()
-    private var order: List<Int> = emptyList() // play order: queue indices, shuffled when shuffle is on
+    private var songs: List<Song> = emptyList()
+    private var order: List<Int> = emptyList() // play order: songs indices, shuffled when shuffle is on
     private var position = 0 // index into order
     private var progressJob: Job? = null
 
@@ -85,6 +85,12 @@ class IosPlayerController(
 
     private val _repeatMode = MutableStateFlow(RepeatMode.OFF)
     override val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
+
+    private val _queue = MutableStateFlow<List<QueueItem>>(emptyList())
+    override val queue: StateFlow<List<QueueItem>> = _queue.asStateFlow()
+
+    private val _currentQueuePosition = MutableStateFlow(-1)
+    override val currentQueuePosition: StateFlow<Int> = _currentQueuePosition.asStateFlow()
 
     init {
         AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayback, error = null)
@@ -110,7 +116,7 @@ class IosPlayerController(
         val playable = songs.filter { !it.isOnline }
         if (playable.isEmpty()) return
         val start = songs.getOrNull(startIndex)?.let { s -> playable.indexOfFirst { it.mediaId == s.mediaId } } ?: 0
-        queue = playable
+        this.songs = playable
         rebuildOrder(startAt = start.coerceAtLeast(0))
         load(autoPlay = true)
     }
@@ -121,7 +127,7 @@ class IosPlayerController(
     }
 
     override fun skipToNext() {
-        if (queue.isEmpty()) return
+        if (songs.isEmpty()) return
         if (position < order.lastIndex) {
             position++
         } else if (_repeatMode.value == RepeatMode.ALL) {
@@ -133,7 +139,7 @@ class IosPlayerController(
     }
 
     override fun skipToPrevious() {
-        if (queue.isEmpty()) return
+        if (songs.isEmpty()) return
         // Like most players: restart the song unless it only just started
         if (_currentPosition.value > 3_000 || position == 0) {
             seekTo(0)
@@ -168,14 +174,66 @@ class IosPlayerController(
     override fun stopPlayback() {
         pause()
         player.replaceCurrentItemWithPlayerItem(null)
-        queue = emptyList()
+        songs = emptyList()
         order = emptyList()
         position = 0
         _currentSong.value = null
         _currentPosition.value = 0
         _duration.value = 0
+        publishQueue()
         queueStore.clear()
         MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = null
+    }
+
+    override fun playNext(song: Song) = insert(song, if (order.isEmpty()) 0 else position + 1)
+
+    override fun addToQueue(song: Song) = insert(song, order.size)
+
+    // New songs go at the end of [songs]; [order] decides where they play
+    private fun insert(song: Song, orderPosition: Int) {
+        if (song.isOnline) return
+        if (songs.isEmpty()) {
+            playQueue(listOf(song), 0)
+            return
+        }
+        songs = songs + song
+        order = order.toMutableList().apply { add(orderPosition.coerceIn(0, size), songs.lastIndex) }
+        publishQueue()
+        saveQueue()
+    }
+
+    override fun moveQueueItem(from: Int, to: Int) {
+        if (_isShuffleEnabled.value || from !in order.indices || to !in order.indices) return
+        val current = order[position]
+        order = order.toMutableList().apply { add(to, removeAt(from)) }
+        position = order.indexOf(current)
+        publishQueue()
+        saveQueue()
+    }
+
+    override fun removeQueueItem(position: Int) {
+        if (position !in order.indices) return
+        if (order.size == 1) {
+            stopPlayback()
+            return
+        }
+        val removingCurrent = position == this.position
+        order = order.toMutableList().apply { removeAt(position) }
+        if (position < this.position || this.position > order.lastIndex) this.position--
+        this.position = this.position.coerceIn(0, order.lastIndex)
+        if (removingCurrent) load(autoPlay = _isPlaying.value) else publishQueue()
+        saveQueue()
+    }
+
+    override fun skipToQueueItem(position: Int) {
+        if (position !in order.indices) return
+        this.position = position
+        load(autoPlay = true)
+    }
+
+    private fun publishQueue() {
+        _queue.value = order.map { QueueItem(songs[it], it) }
+        _currentQueuePosition.value = if (order.isEmpty()) -1 else position
     }
 
     // There are no downloads on iOS
@@ -186,20 +244,22 @@ class IosPlayerController(
 
     private fun rebuildOrder(startAt: Int) {
         order = if (_isShuffleEnabled.value) {
-            listOf(startAt) + queue.indices.filter { it != startAt }.shuffled()
+            listOf(startAt) + songs.indices.filter { it != startAt }.shuffled()
         } else {
-            queue.indices.toList()
+            songs.indices.toList()
         }
         position = order.indexOf(startAt).coerceAtLeast(0)
+        publishQueue()
     }
 
     private fun load(autoPlay: Boolean, startMs: Long = 0L) {
-        val song = queue.getOrNull(order.getOrNull(position) ?: return) ?: return
+        val song = songs.getOrNull(order.getOrNull(position) ?: return) ?: return
         val url = NSURL.URLWithString(song.contentUri) ?: return
         player.replaceCurrentItemWithPlayerItem(AVPlayerItem(uRL = url))
         if (startMs > 0) player.seekToTime(CMTimeMakeWithSeconds(startMs / 1000.0, 600))
         _currentSong.value = song
         _duration.value = song.duration
+        publishQueue()
         _currentPosition.value = startMs
         effects.onSongChanged(song)
         if (autoPlay) resume() else updateNowPlaying()
@@ -280,12 +340,12 @@ class IosPlayerController(
     }
 
     private fun saveQueue() {
-        if (queue.isEmpty()) return
+        if (songs.isEmpty()) return
         // Saved in play order, so a shuffled queue resumes in the same order
-        val songs = order.map { queue[it] }
+        val ordered = order.map { songs[it] }
         queueStore.save(
             SavedQueue(
-                songs = songs.map { QueuedSong(it.id, it.title, it.artist, it.album, it.duration, it.contentUri, it.albumArtUri) },
+                songs = ordered.map { QueuedSong(it.id, it.title, it.artist, it.album, it.duration, it.contentUri, it.albumArtUri) },
                 index = position,
                 positionMs = _currentPosition.value,
                 shuffle = _isShuffleEnabled.value,
@@ -297,9 +357,9 @@ class IosPlayerController(
     /** Opening the app brings back the last queue, paused where it stopped (as on Android). */
     private fun restoreSavedQueue() {
         val saved = queueStore.load()?.withoutOnlineSongs() ?: return
-        queue = saved.songs.map { it.toSong() }
-        order = queue.indices.toList()
-        position = saved.index.coerceIn(0, queue.lastIndex)
+        songs = saved.songs.map { it.toSong() }
+        order = songs.indices.toList()
+        position = saved.index.coerceIn(0, songs.lastIndex)
         _isShuffleEnabled.value = saved.shuffle
         _repeatMode.value = saved.repeatMode
         load(autoPlay = false, startMs = saved.positionMs)

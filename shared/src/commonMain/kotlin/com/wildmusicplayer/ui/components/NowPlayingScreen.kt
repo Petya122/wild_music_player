@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.VolumeMute
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
@@ -84,6 +85,7 @@ fun NowPlayingScreen(
     onCollapse: () -> Unit,
     onStop: () -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
+    onShowQueue: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val audioEffectsManager = LocalAudioEffects.current
@@ -157,14 +159,26 @@ fun NowPlayingScreen(
                     letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)
                 )
 
-                // Stop Playback Button
-                IconButton(onClick = onStop) {
-                    Icon(
-                        imageVector = Icons.Default.StopCircle,
-                        contentDescription = "Stop Playback",
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row {
+                    if (onShowQueue != null) {
+                        IconButton(onClick = onShowQueue) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                contentDescription = "Queue",
+                                modifier = Modifier.size(26.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    // Stop Playback Button
+                    IconButton(onClick = onStop) {
+                        Icon(
+                            imageVector = Icons.Default.StopCircle,
+                            contentDescription = "Stop Playback",
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 

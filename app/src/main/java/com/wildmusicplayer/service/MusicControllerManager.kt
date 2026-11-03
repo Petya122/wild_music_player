@@ -1,6 +1,8 @@
 package com.wildmusicplayer.service
 
 import com.wildmusicplayer.platform.PlayerController
+import com.wildmusicplayer.platform.QueueItem
+import androidx.media3.common.C
 import com.wildmusicplayer.data.forContext
 import com.wildmusicplayer.data.getInstance
 import android.content.ComponentName
@@ -34,8 +36,17 @@ class MusicControllerManager(private val context: Context) : PlayerController {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var progressJob: Job? = null
 
-    // Cache of the active playlist for metadata/song resolution
+    // The player's items as songs, in the player's own (unshuffled) order
     private var currentPlaylist: List<Song> = emptyList()
+
+    // Every song the app put in the queue, by media ID, so queue entries keep all their details
+    private val knownSongs = mutableMapOf<String, Song>()
+
+    private val _queue = MutableStateFlow<List<QueueItem>>(emptyList())
+    override val queue: StateFlow<List<QueueItem>> = _queue.asStateFlow()
+
+    private val _currentQueuePosition = MutableStateFlow(-1)
+    override val currentQueuePosition: StateFlow<Int> = _currentQueuePosition.asStateFlow()
 
     // Last command issued before the controller finished connecting (e.g. a tap right after launch)
     private var pendingAction: ((MediaController) -> Unit)? = null
@@ -97,6 +108,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
             ?: return
 
         val songs = saved.songs.map { it.toSong() }
+        remember(songs)
         currentPlaylist = songs
         controller.shuffleModeEnabled = saved.shuffle
         controller.repeatMode = saved.repeatMode
@@ -122,6 +134,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
         _duration.value = controller.duration.coerceAtLeast(0L)
         _currentPosition.value = controller.currentPosition.coerceAtLeast(0L)
         resolveCurrentSong(controller.currentMediaItem)
+        refreshQueue()
 
         if (controller.isPlaying) {
             startProgressUpdates()
@@ -135,16 +148,93 @@ class MusicControllerManager(private val context: Context) : PlayerController {
             _currentSong.value = null
             return
         }
-        _currentSong.value = currentPlaylist.find { it.mediaId == mediaItem.mediaId }
+        val song = songFor(mediaItem)
+        _currentSong.value = if (song.duration > 0) song else song.copy(duration = mediaController?.duration?.coerceAtLeast(0L) ?: 0L)
+    }
+
+    /** The song behind a player item: the one the app queued, or one rebuilt from the item's metadata. */
+    private fun songFor(mediaItem: MediaItem): Song =
+        knownSongs[mediaItem.mediaId]
+            ?: currentPlaylist.find { it.mediaId == mediaItem.mediaId }
             ?: Song(
                 id = mediaItem.mediaId.toLongOrNull() ?: Song.ONLINE_SONG_ID,
                 title = mediaItem.mediaMetadata.title?.toString() ?: "Unknown Title",
                 artist = mediaItem.mediaMetadata.artist?.toString() ?: "Unknown Artist",
                 album = mediaItem.mediaMetadata.albumTitle?.toString() ?: "Unknown Album",
-                duration = mediaController?.duration?.coerceAtLeast(0L) ?: 0L,
-                contentUri = mediaItem.requestMetadata.mediaUri?.toString() ?: "",
+                duration = 0L, // unknown until it plays
+                contentUri = mediaItem.localConfiguration?.uri?.toString()
+                    ?: mediaItem.requestMetadata.mediaUri?.toString() ?: "",
                 albumArtUri = mediaItem.mediaMetadata.artworkUri?.toString()
             )
+
+    private fun remember(songs: List<Song>) {
+        songs.forEach { knownSongs[it.mediaId] = it }
+    }
+
+    /** Rebuilds [queue] from the player: its items in play order (the shuffled order when shuffle is on). */
+    private fun refreshQueue() {
+        val controller = mediaController ?: return
+        val timeline = controller.currentTimeline
+        if (timeline.isEmpty) {
+            currentPlaylist = emptyList()
+            _queue.value = emptyList()
+            _currentQueuePosition.value = -1
+            return
+        }
+        val songs = (0 until controller.mediaItemCount).map { songFor(controller.getMediaItemAt(it)) }
+        currentPlaylist = songs
+
+        val shuffle = controller.shuffleModeEnabled
+        val order = mutableListOf<Int>()
+        var index = timeline.getFirstWindowIndex(shuffle)
+        while (index != C.INDEX_UNSET && order.size < timeline.windowCount) {
+            order += index
+            index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, shuffle)
+        }
+        _queue.value = order.mapNotNull { i -> songs.getOrNull(i)?.let { QueueItem(it, i) } }
+        _currentQueuePosition.value = order.indexOf(controller.currentMediaItemIndex)
+    }
+
+    override fun playNext(song: Song) {
+        remember(listOf(song))
+        val controller = mediaController
+        if (controller == null || controller.mediaItemCount == 0) {
+            playQueue(listOf(song), 0)
+            return
+        }
+        controller.addMediaItem(controller.currentMediaItemIndex + 1, song.toMediaItem())
+    }
+
+    override fun addToQueue(song: Song) {
+        remember(listOf(song))
+        val controller = mediaController
+        if (controller == null || controller.mediaItemCount == 0) {
+            playQueue(listOf(song), 0)
+            return
+        }
+        controller.addMediaItem(song.toMediaItem())
+    }
+
+    override fun moveQueueItem(from: Int, to: Int) {
+        val controller = mediaController ?: return
+        // With shuffle on the queue isn't in list order, so moving there would land somewhere unexpected
+        if (controller.shuffleModeEnabled) return
+        val fromIndex = _queue.value.getOrNull(from)?.playerIndex ?: return
+        val toIndex = _queue.value.getOrNull(to)?.playerIndex ?: return
+        if (fromIndex != toIndex) controller.moveMediaItem(fromIndex, toIndex)
+    }
+
+    override fun removeQueueItem(position: Int) {
+        val controller = mediaController ?: return
+        val index = _queue.value.getOrNull(position)?.playerIndex ?: return
+        if (controller.mediaItemCount <= 1) stopPlayback() else controller.removeMediaItem(index)
+    }
+
+    override fun skipToQueueItem(position: Int) {
+        val controller = mediaController ?: return
+        val index = _queue.value.getOrNull(position)?.playerIndex ?: return
+        controller.seekTo(index, 0L)
+        controller.play()
     }
 
     override fun playSong(song: Song, playlist: List<Song>) {
@@ -158,6 +248,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
      */
     override fun playQueue(songs: List<Song>, startIndex: Int) {
         if (songs.isEmpty()) return
+        remember(songs)
         currentPlaylist = songs
         val mediaItems = songs.map { it.toMediaItem() }
         val index = startIndex.coerceIn(0, songs.lastIndex)
@@ -263,6 +354,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
             val localId = Song.webUrlOf(song.contentUri)?.let { downloadIndex.downloadedIdFor(it) }
                 ?: return@forEachIndexed
             val local = song.copy(id = localId, contentUri = localSongUri(localId).toString())
+            knownSongs[local.mediaId] = local
             controller.replaceMediaItem(index, local.toMediaItem())
             updated[index] = local
             changed = true
@@ -312,7 +404,12 @@ class MusicControllerManager(private val context: Context) : PlayerController {
             }
         }
 
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+            refreshQueue()
+        }
+
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            refreshQueue()
             resolveCurrentSong(mediaItem)
             _duration.value = mediaController?.duration?.coerceAtLeast(0L) ?: 0L
             _currentPosition.value = mediaController?.currentPosition?.coerceAtLeast(0L) ?: 0L
@@ -320,6 +417,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
 
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
             _isShuffleEnabled.value = shuffleModeEnabled
+            refreshQueue()
         }
 
         override fun onRepeatModeChanged(repeatMode: Int) {

@@ -17,6 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import com.wildmusicplayer.ui.LocalShowMessage
+import com.wildmusicplayer.ui.LocalQueueActions
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.PlaylistRemove
@@ -210,6 +214,8 @@ fun SongRowItem(
     onRemoveFromPlaylist: (() -> Unit)? = null
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val queueActions = LocalQueueActions.current
+    val showMessage = LocalShowMessage.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -260,7 +266,7 @@ fun SongRowItem(
             )
         }
 
-        if (onDelete != null || onAddToPlaylist != null || onRemoveFromPlaylist != null) {
+        if (queueActions != null || onDelete != null || onAddToPlaylist != null || onRemoveFromPlaylist != null) {
             Box {
                 IconButton(
                     onClick = { menuOpen = true },
@@ -274,6 +280,30 @@ fun SongRowItem(
                     )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (queueActions != null) {
+                        DropdownMenuItem(
+                            text = { Text("Play next") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null)
+                            },
+                            onClick = {
+                                menuOpen = false
+                                queueActions.playNext(song)
+                                showMessage("Playing next: ${song.title}")
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Add to queue") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null)
+                            },
+                            onClick = {
+                                menuOpen = false
+                                queueActions.addToQueue(song)
+                                showMessage("Added to queue: ${song.title}")
+                            }
+                        )
+                    }
                     if (onAddToPlaylist != null) {
                         DropdownMenuItem(
                             text = { Text("Add to playlist…") },

@@ -38,6 +38,12 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.6", listOf(
+            ChangelogEntry("📋", "See What's Next", "Tap the queue button in Now Playing to see the songs coming up. Tap one to jump to it, ✕ to remove it, or drag the handle to change the order."),
+            ChangelogEntry("⏭️", "Play Next & Add to Queue", "Every song's ⋮ menu (also online tracks in playlists) can now play it right after the current song, or add it to the end of the queue. With shuffle on, too.")
+        )
+    ),
+    ReleaseNotes(
         "0.8.5", listOf(
             ChangelogEntry("🧱", "Rebuilt Foundations", "Home, Songs, Search, Playlists, the player, and how your playlists, favorites, saved queue and settings are stored were all rebuilt on a cleaner base. Everything carries over and should look and work exactly as before."),
             ChangelogEntry("🔄", "Smoother Rotation", "Turning the phone no longer reconnects the player or reloads your library.")

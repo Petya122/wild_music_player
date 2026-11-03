@@ -58,6 +58,7 @@ fun DraggablePlayerSheet(
     bottomBarHeight: androidx.compose.ui.unit.Dp = 80.dp,
     isFavorite: Boolean = false,
     onToggleFavorite: (Long) -> Unit = {},
+    onShowQueue: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -213,7 +214,8 @@ fun DraggablePlayerSheet(
                         },
                         onStop = onStop,
                         isFavorite = isFavorite,
-                        onToggleFavorite = onToggleFavorite
+                        onToggleFavorite = onToggleFavorite,
+                        onShowQueue = onShowQueue
                     )
                 }
             }

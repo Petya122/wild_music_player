@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.platform.AudioEffects
 import com.wildmusicplayer.ui.components.AddToPlaylistDialog
+import com.wildmusicplayer.ui.components.QueueSheet
 import com.wildmusicplayer.ui.components.DraggablePlayerSheet
 import com.wildmusicplayer.ui.screens.HomeScreen
 import com.wildmusicplayer.ui.screens.NavigationTab
@@ -63,7 +64,11 @@ fun WildMusicApp(
         }
     }
 
-    CompositionLocalProvider(LocalShowMessage provides showMessage, LocalAudioEffects provides audioEffects) {
+    CompositionLocalProvider(
+        LocalShowMessage provides showMessage,
+        LocalAudioEffects provides audioEffects,
+        LocalQueueActions provides QueueActions(library.player::playNext, library.player::addToQueue)
+    ) {
         WildMusicPlayerTheme(themeMode = theme) {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 AppContent(library, emptyLibraryHint, snackbarHostState, showMessage)
@@ -98,6 +103,7 @@ private fun AppContent(
 
     var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     var songForPlaylistPicker by remember { mutableStateOf<Song?>(null) }
 
     val toggleFavorite: (Long) -> Unit = { songId ->
@@ -205,7 +211,22 @@ private fun AppContent(
                 onToggleFavorite = toggleFavorite,
                 bottomBarHeight = 80.dp,
                 isExpanded = isPlayerExpanded,
-                onExpandedChange = { isPlayerExpanded = it }
+                onExpandedChange = { isPlayerExpanded = it },
+                onShowQueue = { showQueue = true }
+            )
+        }
+
+        if (showQueue) {
+            val queue by player.queue.collectAsState()
+            val queuePosition by player.currentQueuePosition.collectAsState()
+            QueueSheet(
+                queue = queue,
+                currentPosition = queuePosition,
+                isShuffleEnabled = isShuffleEnabled,
+                onPlayItem = player::skipToQueueItem,
+                onRemoveItem = player::removeQueueItem,
+                onMoveItem = player::moveQueueItem,
+                onDismiss = { showQueue = false }
             )
         }
 
