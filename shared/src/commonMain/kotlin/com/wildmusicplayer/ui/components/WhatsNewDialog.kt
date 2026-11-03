@@ -38,6 +38,13 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.7", listOf(
+            ChangelogEntry("🌙", "Sleep Timer", "Tap the moon in Now Playing: 15 to 90 minutes, or after this song. The music fades out over the last 10 seconds, then pauses, even with the screen off. The countdown shows at the top."),
+            ChangelogEntry("🎚️", "Equalizer", "In the Sound sheet: your phone's presets (Pop, Rock, Bass…) or your own curve with a slider per band. Saved for next time."),
+            ChangelogEntry("🚗", "Car Display Refresh", "A few seconds after the car connects, the app briefly re-sends the song and repeat setting, so the display shouldn't stay on \"Not Provided\" or lose RPT. You may hear a tiny gap when this happens.")
+        )
+    ),
+    ReleaseNotes(
         "0.8.6", listOf(
             ChangelogEntry("📋", "See What's Next", "Tap the queue button in Now Playing to see the songs coming up. Tap one to jump to it, ✕ to remove it, or drag the handle to change the order."),
             ChangelogEntry("⏭️", "Play Next & Add to Queue", "Every song's ⋮ menu (also online tracks in playlists) can now play it right after the current song, or add it to the end of the queue. With shuffle on, too.")

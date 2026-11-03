@@ -2,6 +2,9 @@ package com.wildmusicplayer.ui.components
 
 import kotlin.math.abs
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +50,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.wildmusicplayer.platform.AudioEffects
+import com.wildmusicplayer.platform.EqualizerState
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +65,7 @@ fun SoundSettingsSheet(
     val isMuted by audioEffectsManager.isMuted.collectAsState()
     val boostDb by audioEffectsManager.volumeBoostDb.collectAsState()
     val isNormEnabled by audioEffectsManager.isNormalizationEnabled.collectAsState()
+    val equalizer by audioEffectsManager.equalizer.collectAsState()
 
     val currentEffectiveVol = if (isMuted) 0f else volume
     val volumePercent = (currentEffectiveVol * 100).toInt()
@@ -80,6 +86,7 @@ fun SoundSettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 36.dp)
         ) {
@@ -282,8 +289,102 @@ fun SoundSettingsSheet(
                     onCheckedChange = { audioEffectsManager.setNormalizationEnabled(it) }
                 )
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            EqualizerSection(equalizer, audioEffectsManager)
         }
     }
+}
+
+/** On/off, the phone's presets as chips, and a slider per band (which turns the curve into "Custom"). */
+@Composable
+private fun EqualizerSection(equalizer: EqualizerState?, effects: AudioEffects) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                text = "Equalizer",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = if (equalizer == null) {
+                    "Not available on this phone"
+                } else {
+                    "Pick a preset or shape the sound yourself. Saved for next time."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+        Switch(
+            checked = equalizer?.isEnabled == true,
+            enabled = equalizer != null,
+            onCheckedChange = { effects.setEqualizerEnabled(it) }
+        )
+    }
+    if (equalizer == null || !equalizer.isEnabled) return
+
+    Spacer(modifier = Modifier.height(10.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        equalizer.presets.forEachIndexed { index, name ->
+            FilterChip(
+                selected = equalizer.presetIndex == index,
+                onClick = { effects.useEqualizerPreset(index) },
+                label = { Text(name) }
+            )
+        }
+        FilterChip(selected = equalizer.presetIndex == -1, onClick = {}, label = { Text("Custom") })
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+    equalizer.bandFrequenciesHz.forEachIndexed { band, hz ->
+        val level = equalizer.bandLevelsMb.getOrElse(band) { 0 }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = formatFrequency(hz),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(64.dp)
+            )
+            Slider(
+                value = level.toFloat(),
+                onValueChange = { effects.setEqualizerBandLevel(band, it.roundToInt()) },
+                valueRange = equalizer.minLevelMb.toFloat()..equalizer.maxLevelMb.toFloat(),
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = formatDb(level),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                modifier = Modifier.width(52.dp)
+            )
+        }
+    }
+}
+
+private fun formatFrequency(hz: Int): String =
+    if (hz >= 1000) {
+        val tenths = (hz + 50) / 100
+        if (tenths % 10 == 0) "${tenths / 10} kHz" else "${tenths / 10}.${tenths % 10} kHz"
+    } else {
+        "$hz Hz"
+    }
+
+private fun formatDb(levelMb: Int): String {
+    val db = (levelMb / 100f).roundToInt()
+    return if (db > 0) "+$db dB" else "$db dB"
 }
 
 /**

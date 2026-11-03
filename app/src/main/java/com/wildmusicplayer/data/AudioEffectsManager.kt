@@ -1,8 +1,11 @@
 package com.wildmusicplayer.data
 
 import com.wildmusicplayer.platform.AudioEffects
+import com.wildmusicplayer.platform.EqualizerSettings
+import com.wildmusicplayer.platform.EqualizerState
 import android.content.Context
 import android.content.SharedPreferences
+import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -18,6 +21,8 @@ import kotlin.math.pow
  * Normalization uses each song's measured loudness ([setCurrentTrackLoudness]): songs louder
  * than the target are turned down with the player volume, quieter ones up with the
  * LoudnessEnhancer, on top of the user's own volume and dB boost.
+ *
+ * The [Equalizer] is the phone's own, on the player's audio session: its presets, or a level per band.
  */
 class AudioEffectsManager private constructor(context: Context) : AudioEffects {
 
@@ -47,13 +52,22 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
     private val _isNormalizationEnabled = MutableStateFlow(prefs.getBoolean(KEY_NORMALIZATION, false))
     override val isNormalizationEnabled: StateFlow<Boolean> = _isNormalizationEnabled.asStateFlow()
 
+    private var eqSettings = EqualizerSettings.decode(prefs.getString(KEY_EQUALIZER, null))
+    private val _equalizer = MutableStateFlow<EqualizerState?>(null)
+    override val equalizer: StateFlow<EqualizerState?> = _equalizer.asStateFlow()
+
+    // The sleep timer's fade-out (1 = no fade)
+    private var fadeFactor = 1f
+
     private var player: ExoPlayer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
+    private var equalizerEffect: Equalizer? = null
     private var unmutedVolumeCache: Float = prefs.getFloat(KEY_LAST_UNMUTED_VOL, 1.0f)
 
     private val playerListener = object : Player.Listener {
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
             setupLoudnessEnhancer(audioSessionId)
+            setupEqualizer(audioSessionId)
         }
     }
 
@@ -62,6 +76,7 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         exoPlayer.addListener(playerListener)
         applyVolumeToPlayer()
         setupLoudnessEnhancer(exoPlayer.audioSessionId)
+        setupEqualizer(exoPlayer.audioSessionId)
     }
 
     override fun setVolume(newVolume: Float) {
@@ -109,6 +124,30 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         applyDspEnhancements()
     }
 
+    override fun setEqualizerEnabled(enabled: Boolean) = saveEqualizer(eqSettings.copy(isEnabled = enabled))
+
+    override fun useEqualizerPreset(index: Int) = saveEqualizer(eqSettings.copy(presetIndex = index))
+
+    // Moving a band turns the current curve (a preset's, too) into the user's own
+    override fun setEqualizerBandLevel(band: Int, levelMb: Int) {
+        val levels = _equalizer.value?.bandLevelsMb?.toMutableList() ?: return
+        if (band !in levels.indices) return
+        levels[band] = levelMb
+        saveEqualizer(eqSettings.copy(presetIndex = -1, bandLevelsMb = levels))
+    }
+
+    private fun saveEqualizer(settings: EqualizerSettings) {
+        eqSettings = settings
+        prefs.edit().putString(KEY_EQUALIZER, settings.encode()).apply()
+        applyEqualizer()
+    }
+
+    /** Called by the sleep timer while it fades the music out. */
+    fun setFadeFactor(factor: Float) {
+        fadeFactor = factor.coerceIn(0f, 1f)
+        applyVolumeToPlayer()
+    }
+
     /** Called by PlaybackService when a new song starts. */
     fun setCurrentTrackLoudness(loudnessLufs: Double?) {
         currentTrackLoudness = loudnessLufs
@@ -120,7 +159,7 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         // Turning a loud song down is done with the player volume (clean, no processing)
         val cut = trackGainDb.coerceAtMost(0.0)
         val normalizationScale = 10.0.pow(cut / 20).toFloat()
-        val targetVolume = if (_isMuted.value) 0.0f else _volume.value * normalizationScale
+        val targetVolume = if (_isMuted.value) 0.0f else _volume.value * normalizationScale * fadeFactor
         player?.volume = targetVolume
     }
 
@@ -134,6 +173,50 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
                     applyDspEnhancements()
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun setupEqualizer(audioSessionId: Int) {
+        try {
+            equalizerEffect?.release()
+            equalizerEffect = null
+            _equalizer.value = null
+            if (audioSessionId > 0) {
+                equalizerEffect = Equalizer(0, audioSessionId)
+                applyEqualizer()
+            }
+        } catch (e: Exception) {
+            // Some phones have no equalizer: the Sound sheet then says so
+            e.printStackTrace()
+        }
+    }
+
+    private fun applyEqualizer() {
+        val eq = equalizerEffect ?: return
+        try {
+            val bands = (0 until eq.numberOfBands).map { it.toShort() }
+            val presetCount = eq.numberOfPresets.toInt()
+            val settings = eqSettings
+            val presetIndex = settings.presetIndex.takeIf { it in 0 until presetCount } ?: -1
+            if (presetIndex >= 0) {
+                eq.usePreset(presetIndex.toShort())
+            } else {
+                bands.forEach { band -> eq.setBandLevel(band, (settings.bandLevelsMb.getOrNull(band.toInt()) ?: 0).toShort()) }
+            }
+            eq.enabled = settings.isEnabled
+
+            val range = eq.bandLevelRange
+            _equalizer.value = EqualizerState(
+                isEnabled = settings.isEnabled,
+                bandFrequenciesHz = bands.map { eq.getCenterFreq(it) / 1000 },
+                bandLevelsMb = bands.map { eq.getBandLevel(it).toInt() },
+                minLevelMb = range[0].toInt(),
+                maxLevelMb = range[1].toInt(),
+                presets = (0 until presetCount).map { eq.getPresetName(it.toShort()) },
+                presetIndex = presetIndex
+            )
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -166,6 +249,9 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
             player = null
             loudnessEnhancer?.release()
             loudnessEnhancer = null
+            equalizerEffect?.release()
+            equalizerEffect = null
+            _equalizer.value = null
         } catch (_: Exception) {}
     }
 
@@ -176,6 +262,7 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         private const val KEY_LAST_UNMUTED_VOL = "pref_last_unmuted_vol"
         private const val KEY_BOOST_DB = "pref_volume_boost_db"
         private const val KEY_NORMALIZATION = "pref_audio_normalization"
+        private const val KEY_EQUALIZER = "pref_equalizer"
 
         // Matches the largest preset offered in SoundSettingsSheet
         const val MAX_BOOST_DB = 12

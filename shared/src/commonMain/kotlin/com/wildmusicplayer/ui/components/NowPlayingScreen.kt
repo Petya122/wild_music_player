@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeMute
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
@@ -34,6 +35,9 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -60,7 +64,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.wildmusicplayer.platform.RepeatMode
+import com.wildmusicplayer.platform.SleepTimer
+import com.wildmusicplayer.platform.formatSleepRemaining
 import com.wildmusicplayer.ui.LocalAudioEffects
+import com.wildmusicplayer.ui.LocalSleepTimer
 import com.wildmusicplayer.model.Song
 
 /**
@@ -89,6 +96,7 @@ fun NowPlayingScreen(
     modifier: Modifier = Modifier
 ) {
     val audioEffectsManager = LocalAudioEffects.current
+    val sleepTimer = LocalSleepTimer.current
     var showSoundSheet by remember { mutableStateOf(false) }
 
     val volume by audioEffectsManager.volume.collectAsState()
@@ -142,22 +150,19 @@ fun NowPlayingScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = onCollapse) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Collapse Player",
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
+                Row {
+                    IconButton(onClick = onCollapse) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Collapse Player",
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    if (sleepTimer != null) SleepTimerButton(sleepTimer)
                 }
 
-                Text(
-                    text = "NOW PLAYING",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)
-                )
+                HeaderTitle(sleepTimer)
 
                 Row {
                     if (onShowQueue != null) {
@@ -467,6 +472,75 @@ fun NowPlayingScreen(
             onDismiss = { showSoundSheet = false }
         )
     }
+}
+
+/** The moon button: its menu starts, changes or turns off the sleep timer. Lit while the timer runs. */
+@Composable
+private fun SleepTimerButton(sleepTimer: SleepTimer) {
+    val state by sleepTimer.state.collectAsState()
+    var showMenu by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { showMenu = true }) {
+            Icon(
+                imageVector = Icons.Default.Bedtime,
+                contentDescription = "Sleep timer",
+                modifier = Modifier.size(24.dp),
+                tint = if (state.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+            Text(
+                text = "Sleep timer",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            listOf(15, 30, 45, 60, 90).forEach { minutes ->
+                DropdownMenuItem(
+                    text = { Text("$minutes minutes") },
+                    onClick = {
+                        sleepTimer.start(minutes)
+                        showMenu = false
+                    }
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("After this song") },
+                onClick = {
+                    sleepTimer.stopAfterCurrentSong()
+                    showMenu = false
+                }
+            )
+            if (state.isActive) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Turn off timer", color = MaterialTheme.colorScheme.error) },
+                    onClick = {
+                        sleepTimer.cancel()
+                        showMenu = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+/** "NOW PLAYING", or the sleep timer's countdown while it runs (it fits the same space). */
+@Composable
+private fun HeaderTitle(sleepTimer: SleepTimer?) {
+    val state = sleepTimer?.state?.collectAsState()?.value
+    Text(
+        text = when {
+            state == null || !state.isActive -> "NOW PLAYING"
+            state.atEndOfSong -> "LAST SONG"
+            else -> "SLEEP ${formatSleepRemaining(state.remainingMs)}"
+        },
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)
+    )
 }
 
 private fun formatTime(millis: Long): String {

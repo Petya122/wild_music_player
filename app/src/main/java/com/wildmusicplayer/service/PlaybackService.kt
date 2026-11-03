@@ -114,7 +114,9 @@ class PlaybackService : MediaSessionService() {
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
             val bluetoothAudio = addedDevices.any { it.isSink && it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
-            if (!bluetoothAudio || !resumeSettings.resumeOnBluetoothReconnect) return
+            if (!bluetoothAudio) return
+            refreshCarDisplay()
+            if (!resumeSettings.resumeOnBluetoothReconnect) return
             val pausedAt = pausedByDisconnectAt
             if (pausedAt == 0L || SystemClock.elapsedRealtime() - pausedAt > RECONNECT_WINDOW_MS) return
             val player = mediaSession?.player ?: return
@@ -164,6 +166,7 @@ class PlaybackService : MediaSessionService() {
 
         val audioEffectsManager = com.wildmusicplayer.data.AudioEffectsManager.getInstance(this)
         audioEffectsManager.attachPlayer(player)
+        SleepTimerManager.attach(player, audioEffectsManager)
 
         player.addListener(playerListener)
 
@@ -184,6 +187,7 @@ class PlaybackService : MediaSessionService() {
         saveQueue()
         mainHandler.removeCallbacksAndMessages(null)
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
+        SleepTimerManager.detach()
         com.wildmusicplayer.data.AudioEffectsManager.getInstance(this).release()
         mediaSession?.run {
             player.removeListener(playerListener)
@@ -201,6 +205,27 @@ class PlaybackService : MediaSessionService() {
         val songId = mediaItem?.mediaId?.toLongOrNull()
         val loudness = songId?.let { LoudnessStore.getInstance(this).get(it) }
         com.wildmusicplayer.data.AudioEffectsManager.getInstance(this).setCurrentTrackLoudness(loudness)
+    }
+
+    /**
+     * Car radios (the Qashqai, at least) only ask for the song title and repeat setting when something
+     * changes, and a song repeating on its own never changes anything, so the display can stay on
+     * "Not Provided" or lose RPT. Once the car has connected, briefly flip both so it hears them again.
+     */
+    private fun refreshCarDisplay() {
+        mainHandler.postDelayed({
+            val player = mediaSession?.player ?: return@postDelayed
+            if (player.mediaItemCount == 0) return@postDelayed
+
+            val repeatMode = player.repeatMode
+            player.repeatMode = if (repeatMode == Player.REPEAT_MODE_OFF) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+            mainHandler.postDelayed({ player.repeatMode = repeatMode }, CAR_NUDGE_GAP_MS)
+
+            if (player.isPlaying) {
+                player.pause()
+                mainHandler.postDelayed({ player.play() }, CAR_NUDGE_GAP_MS)
+            }
+        }, CAR_REFRESH_DELAY_MS)
     }
 
     // Empty queues aren't saved: "Stop" clears the saved queue on purpose (MusicControllerManager)
@@ -244,6 +269,9 @@ class PlaybackService : MediaSessionService() {
         private const val SAVE_INTERVAL_MS = 10_000L
         private const val RECONNECT_WINDOW_MS = 2 * 60 * 60 * 1000L
         private const val RECONNECT_PLAY_DELAY_MS = 1_500L
+        // Long enough for the car's control link to come up after the audio one
+        private const val CAR_REFRESH_DELAY_MS = 4_000L
+        private const val CAR_NUDGE_GAP_MS = 400L
     }
 }
 

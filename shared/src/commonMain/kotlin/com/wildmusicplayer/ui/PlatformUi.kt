@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.platform.AudioEffects
+import com.wildmusicplayer.platform.SleepTimer
 
 /** Shows a short message: a toast on Android, a snackbar on iOS. Provided by each app. */
 val LocalShowMessage = staticCompositionLocalOf<(String) -> Unit> { {} }
@@ -19,3 +20,6 @@ expect fun PlatformBackHandler(enabled: Boolean = true, onBack: () -> Unit)
 class QueueActions(val playNext: (Song) -> Unit, val addToQueue: (Song) -> Unit)
 
 val LocalQueueActions = staticCompositionLocalOf<QueueActions?> { null }
+
+/** The sleep timer; null hides its button. Provided by each app. */
+val LocalSleepTimer = staticCompositionLocalOf<SleepTimer?> { null }
