@@ -38,7 +38,7 @@ fun parseVideoTitle(videoTitle: String, channelName: String): Pair<String, Strin
 fun stripTitleNoise(videoTitle: String): String {
     var result = bracketRegex.replace(videoTitle) { match ->
         val inside = match.groupValues[1].lowercase()
-        val words = inside.split(Regex("[^\\p{L}\\p{N}/]+")).filter { it.isNotEmpty() }
+        val words = wordsOf(inside, extraWordChars = "/")
         val isNoise = noiseKeywords.any { keyword ->
             if (keyword.contains(' ')) inside.contains(keyword) else keyword in words
         }
