@@ -39,6 +39,11 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.3", listOf(
+            ChangelogEntry("↩️", "Back Stays in Playlists", "Pressing Back inside a playlist now returns to your playlists instead of jumping to Home. With the player open, Back still closes the player first.")
+        )
+    ),
+    ReleaseNotes(
         "0.8.2", listOf(
             ChangelogEntry("⚡", "Faster Downloads", "Songs now download in small pieces, which YouTube doesn't slow down, and a piece that fails is simply retried."),
             ChangelogEntry("➕", "Add Your Songs to Playlists", "Tap ⋮ on any song → Add to playlist… to put it in one or more playlists, or create a new one. Inside a playlist, ⋮ → Remove from this playlist."),

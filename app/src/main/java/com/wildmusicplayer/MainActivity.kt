@@ -405,11 +405,10 @@ fun MusicPlayerApp(
     val isShuffleEnabled by controllerManager.isShuffleEnabled.collectAsState()
     val repeatMode by controllerManager.repeatMode.collectAsState()
 
-    // Collapse player on back press if expanded, return from settings, or return to Home tab
-    BackHandler(enabled = isPlayerExpanded || isSettingsOpen || currentTab != NavigationTab.HOME) {
-        if (isPlayerExpanded) {
-            isPlayerExpanded = false
-        } else if (isSettingsOpen) {
+    // Return from settings, or return to Home tab. Screens with their own detail views (playlists)
+    // register a later BackHandler, which wins, so Back closes the detail view first.
+    BackHandler(enabled = isSettingsOpen || currentTab != NavigationTab.HOME) {
+        if (isSettingsOpen) {
             isSettingsOpen = false
         } else if (currentTab != NavigationTab.HOME) {
             currentTab = NavigationTab.HOME
@@ -719,6 +718,11 @@ fun MusicPlayerApp(
                 isExpanded = isPlayerExpanded,
                 onExpandedChange = { isPlayerExpanded = it }
             )
+        }
+
+        // Registered each time the player expands, so it is the newest handler and always collapses first
+        if (isPlayerExpanded) {
+            BackHandler { isPlayerExpanded = false }
         }
 
         // "Add to playlist…" from a song's ⋮ menu

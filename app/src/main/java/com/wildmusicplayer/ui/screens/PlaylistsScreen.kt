@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -124,6 +125,11 @@ fun PlaylistsScreen(
     var createMode by remember { mutableIntStateOf(0) } // 0 = From Folder, 1 = Custom Name
     var newPlaylistName by remember { mutableStateOf("") }
     var overviewFilter by remember { mutableStateOf(PlaylistFilter.ALL) }
+
+    // Back from an open playlist returns to the playlist list, not to Home
+    BackHandler(enabled = selectedPlaylist !is PlaylistSelection.None) {
+        selectedPlaylist = PlaylistSelection.None
+    }
 
     val favoriteSongs = remember(allSongs, favoriteSongIds) {
         allSongs.filter { favoriteSongIds.contains(it.id) }
