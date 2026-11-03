@@ -38,9 +38,8 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
-        "0.8.6", listOf(
-            ChangelogEntry("🍎", "Screens Ready for iPhone", "Home, Songs, Search, Playlists and the player screens are now built once for both Android and iPhone. They should look and work exactly as before."),
-            ChangelogEntry("💾", "Your Data, Shared", "Playlists, favorites, the saved queue and settings are handled by shared code too. Everything carries over unchanged."),
+        "0.8.5", listOf(
+            ChangelogEntry("🧱", "Rebuilt Foundations", "Home, Songs, Search, Playlists, the player, and how your playlists, favorites, saved queue and settings are stored were all rebuilt on a cleaner base. Everything carries over and should look and work exactly as before."),
             ChangelogEntry("🔄", "Smoother Rotation", "Turning the phone no longer reconnects the player or reloads your library.")
         )
     ),

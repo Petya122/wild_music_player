@@ -1,0 +1,82 @@
+name: iOS Build (on hold)
+
+# The iPhone version is on hold, so this only runs when started by hand
+# (GitHub > Actions > iOS Build (on hold) > Run workflow). Android releases don't wait for it.
+on:
+  workflow_dispatch:
+
+jobs:
+  # The shared code must also compile and pass its tests on iOS (needs a Mac, so it runs here)
+  ios-tests:
+    name: Shared Code Tests on iOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradlew Executable
+        run: chmod +x ./gradlew
+
+      - name: Run Shared Tests on the iOS Simulator
+        run: |
+          set -o pipefail
+          ./gradlew :shared:iosSimulatorArm64Test -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon 2>&1 | tee gradle-ios.log
+
+      # The iPhone app (iosApp/): an Xcode project generated from project.yml, wrapping the shared code
+      - name: Generate Xcode Project
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen generate
+
+      - name: Build iOS App for the Simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/WildMusicPlayer.xcodeproj -scheme WildMusicPlayer -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcode-ios.log
+
+      - name: Build Unsigned iPhone App (IPA)
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/WildMusicPlayer.xcodeproj -scheme WildMusicPlayer -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee -a xcode-ios.log
+          # An IPA is the .app inside a Payload folder, zipped. Sideloading tools sign it for your iPhone.
+          mkdir -p Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/WildMusicPlayer.app Payload/
+          zip -qr WildMusicPlayer-unsigned.ipa Payload
+          cd build/ios/Build/Products/Debug-iphonesimulator && zip -qr ../../../../../WildMusicPlayer-simulator.zip WildMusicPlayer.app
+
+      - name: Upload iOS Builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: |
+            WildMusicPlayer-unsigned.ipa
+            WildMusicPlayer-simulator.zip
+
+      # Logs need a GitHub login to read; annotations are public, so failures are repeated there
+      - name: Report Failures as Annotations
+        if: failure()
+        run: |
+          { grep -hE "^e: " gradle-ios.log xcode-ios.log; grep -hiE "error|What went wrong|FAILED|Exception" gradle-ios.log xcode-ios.log; } 2>/dev/null | grep -v "^\s*$" | awk '!seen[$0]++' | head -n 30 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          # The end of the Xcode log usually names the failing command
+          [ -f xcode-ios.log ] && tail -n 25 xcode-ios.log | grep -v "^\s*$" | while IFS= read -r line; do
+            echo "::warning::$line"
+          done
+          for f in shared/build/test-results/iosSimulatorArm64Test/*.xml; do
+            [ -f "$f" ] && grep -A2 "<failure" "$f" | head -n 6 | tr '\n' ' ' | sed 's/^/::error::/' && echo
+          done
+          true
