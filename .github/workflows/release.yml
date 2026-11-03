@@ -30,7 +30,21 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run Shared Tests on the iOS Simulator
-        run: ./gradlew :shared:iosSimulatorArm64Test -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew :shared:iosSimulatorArm64Test -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon 2>&1 | tee gradle-ios.log
+
+      # Logs need a GitHub login to read; annotations are public, so failures are repeated there
+      - name: Report Failures as Annotations
+        if: failure()
+        run: |
+          grep -E "^e: |What went wrong|FAILED|Exception|> " gradle-ios.log | head -n 20 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          for f in shared/build/test-results/iosSimulatorArm64Test/*.xml; do
+            [ -f "$f" ] && grep -A2 "<failure" "$f" | head -n 6 | tr '\n' ' ' | sed 's/^/::error::/' && echo
+          done
+          true
 
   build:
     name: Build & Publish Release APK
