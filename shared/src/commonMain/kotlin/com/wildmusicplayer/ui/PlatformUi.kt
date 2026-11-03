@@ -2,6 +2,7 @@ package com.wildmusicplayer.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.wildmusicplayer.lyrics.LyricsRepository
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.platform.AudioEffects
 import com.wildmusicplayer.platform.SleepTimer
@@ -23,3 +24,6 @@ val LocalQueueActions = staticCompositionLocalOf<QueueActions?> { null }
 
 /** The sleep timer; null hides its button. Provided by each app. */
 val LocalSleepTimer = staticCompositionLocalOf<SleepTimer?> { null }
+
+/** Where Now Playing gets lyrics; null hides the Lyrics button. Provided by each app. */
+val LocalLyrics = staticCompositionLocalOf<LyricsRepository?> { null }

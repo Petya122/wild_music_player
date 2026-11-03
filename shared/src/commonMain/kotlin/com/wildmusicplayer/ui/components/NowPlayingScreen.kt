@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -53,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,7 +68,9 @@ import androidx.compose.ui.unit.dp
 import com.wildmusicplayer.platform.RepeatMode
 import com.wildmusicplayer.platform.SleepTimer
 import com.wildmusicplayer.platform.formatSleepRemaining
+import com.wildmusicplayer.lyrics.LyricsResult
 import com.wildmusicplayer.ui.LocalAudioEffects
+import com.wildmusicplayer.ui.LocalLyrics
 import com.wildmusicplayer.ui.LocalSleepTimer
 import com.wildmusicplayer.model.Song
 
@@ -97,6 +101,13 @@ fun NowPlayingScreen(
 ) {
     val audioEffectsManager = LocalAudioEffects.current
     val sleepTimer = LocalSleepTimer.current
+    val lyricsRepository = LocalLyrics.current
+    var showLyrics by remember { mutableStateOf(false) }
+    // Looked up only while the lyrics are showing; null while loading
+    val lyrics by produceState<LyricsResult?>(null, song.mediaId, showLyrics) {
+        value = null
+        if (showLyrics && lyricsRepository != null) value = lyricsRepository.lyricsFor(song)
+    }
     var showSoundSheet by remember { mutableStateOf(false) }
 
     val volume by audioEffectsManager.volume.collectAsState()
@@ -198,11 +209,23 @@ fun NowPlayingScreen(
                     .clip(RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                SongThumbnail(
-                    albumArtUri = song.albumArtUri,
-                    modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(20.dp)
-                )
+                if (showLyrics) {
+                    LyricsView(
+                        lyrics = lyrics,
+                        currentPosition = currentPosition,
+                        isPlaying = isPlaying,
+                        onSeekTo = onSeekTo,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    )
+                } else {
+                    SongThumbnail(
+                        albumArtUri = song.albumArtUri,
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -241,6 +264,17 @@ fun NowPlayingScreen(
                             color = MaterialTheme.colorScheme.outline,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (lyricsRepository != null) {
+                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                        Icon(
+                            imageVector = Icons.Default.Lyrics,
+                            contentDescription = if (showLyrics) "Show cover" else "Show lyrics",
+                            tint = if (showLyrics) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(26.dp)
                         )
                     }
                 }

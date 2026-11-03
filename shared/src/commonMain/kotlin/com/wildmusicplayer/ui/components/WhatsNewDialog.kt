@@ -38,6 +38,11 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.8", listOf(
+            ChangelogEntry("🎤", "Lyrics", "Tap the lyrics button next to the heart in Now Playing. Lyrics come from LRCLIB and follow the song line by line where available; tap a line to jump there. Once looked up, they're saved and work in Offline Mode too.")
+        )
+    ),
+    ReleaseNotes(
         "0.8.7", listOf(
             ChangelogEntry("🌙", "Sleep Timer", "Tap the moon in Now Playing: 15 to 90 minutes, or after this song. The music fades out over the last 10 seconds, then pauses, even with the screen off. The countdown shows at the top."),
             ChangelogEntry("🎚️", "Equalizer", "In the Sound sheet: your phone's presets (Pop, Rock, Bass…) or your own curve with a slider per band. Saved for next time."),

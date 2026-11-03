@@ -9,6 +9,8 @@ import com.wildmusicplayer.ui.components.QueueSheet
 import com.wildmusicplayer.ui.QueueActions
 import com.wildmusicplayer.ui.LocalQueueActions
 import com.wildmusicplayer.ui.LocalSleepTimer
+import com.wildmusicplayer.ui.LocalLyrics
+import com.wildmusicplayer.data.lyricsRepository
 import com.wildmusicplayer.service.SleepTimerManager
 import com.wildmusicplayer.service.AndroidTrackDownloader
 import com.wildmusicplayer.ui.LocalShowMessage
@@ -156,7 +158,8 @@ class MainActivity : ComponentActivity() {
                 LocalShowMessage provides { message -> Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() },
                 LocalAudioEffects provides AudioEffectsManager.getInstance(appContext),
                 LocalQueueActions provides QueueActions(controllerManager::playNext, controllerManager::addToQueue),
-                LocalSleepTimer provides SleepTimerManager
+                LocalSleepTimer provides SleepTimerManager,
+                LocalLyrics provides lyricsRepository(appContext)
             ) {
             WildMusicPlayerTheme(themeMode = currentTheme) {
                 Surface(
