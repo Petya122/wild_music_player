@@ -11,7 +11,7 @@ plugins {
 kotlin {
     androidLibrary {
         namespace = "com.wildmusicplayer.shared"
-        compileSdk = 35
+        compileSdk = 37
         minSdk = 26
         withHostTestBuilder {}
     }

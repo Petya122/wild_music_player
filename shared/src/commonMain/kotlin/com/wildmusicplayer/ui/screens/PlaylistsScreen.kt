@@ -1,7 +1,5 @@
 package com.wildmusicplayer.ui.screens
 
-import com.wildmusicplayer.data.getInstance
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +22,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import android.widget.Toast
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -70,19 +67,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import coil3.request.crossfade
 import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import com.wildmusicplayer.platform.DownloadBlock
+import com.wildmusicplayer.platform.TrackDownloader
+import com.wildmusicplayer.ui.LocalShowMessage
+import com.wildmusicplayer.ui.PlatformBackHandler
+import kotlinx.coroutines.flow.MutableStateFlow
 import coil3.request.ImageRequest
 import com.wildmusicplayer.data.DownloadIndex
-import com.wildmusicplayer.data.DownloadPrecondition
-import com.wildmusicplayer.data.NetworkPolicyManager
 import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.data.Playlist
-import com.wildmusicplayer.data.YouTubeTrack
 import com.wildmusicplayer.data.isDownloadedCopyOf
 import com.wildmusicplayer.model.Song
-import com.wildmusicplayer.service.SongDownloadService
 
 enum class PlaylistFilter(val label: String) {
     ALL("All Playlists"),
@@ -115,8 +113,9 @@ fun PlaylistsScreen(
     onToggleFavorite: (Long) -> Unit,
     onCreatePlaylist: (name: String, songIds: List<Long>) -> Unit,
     onDeletePlaylist: (String) -> Unit,
+    downloadIndex: DownloadIndex,
     isOfflineOnlyMode: Boolean = false,
-    networkPolicyManager: NetworkPolicyManager? = null,
+    downloader: TrackDownloader? = null,
     onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null,
     onDeleteSong: ((Song) -> Unit)? = null,
     onAddToPlaylist: ((Song) -> Unit)? = null,
@@ -129,7 +128,7 @@ fun PlaylistsScreen(
     var overviewFilter by remember { mutableStateOf(PlaylistFilter.ALL) }
 
     // Back from an open playlist returns to the playlist list, not to Home
-    BackHandler(enabled = selectedPlaylist !is PlaylistSelection.None) {
+    PlatformBackHandler(enabled = selectedPlaylist !is PlaylistSelection.None) {
         selectedPlaylist = PlaylistSelection.None
     }
 
@@ -429,7 +428,6 @@ fun PlaylistsScreen(
 
             // One queue for the whole playlist: local songs, then online tracks (the downloaded copy
             // if there is one, otherwise streamed). Undownloaded online tracks are skipped offline.
-            val downloadIndex = DownloadIndex.getInstance(LocalContext.current)
             val playQueue = remember(allSongs, playlistSongs, playlist.onlineTracks, isOfflineOnlyMode) {
                 val onlineSongs = playlist.onlineTracks.mapNotNull { track ->
                     val localMatch = downloadedCopyOf(track, allSongs, downloadIndex)
@@ -476,7 +474,8 @@ fun PlaylistsScreen(
                 onAddToPlaylist = onAddToPlaylist,
                 onRemoveFromPlaylist = { song -> onRemoveSongFromPlaylist?.invoke(playlist.id, song.id) },
                 isOfflineOnlyMode = isOfflineOnlyMode,
-                networkPolicyManager = networkPolicyManager,
+                downloadIndex = downloadIndex,
+                downloader = downloader,
                 onPlayOnlineTrack = { track ->
                     val song = playQueue.firstOrNull { Song.webUrlOf(it.contentUri) == track.webUrl }
                     if (song != null) onSongClick(song, playQueue)
@@ -759,17 +758,17 @@ private fun PlaylistDetailView(
     onlineTracks: List<OnlineTrack> = emptyList(),
     allSongs: List<Song> = emptyList(),
     isOfflineOnlyMode: Boolean = false,
-    networkPolicyManager: NetworkPolicyManager? = null,
+    downloadIndex: DownloadIndex? = null,
+    downloader: TrackDownloader? = null,
     onPlayOnlineTrack: ((OnlineTrack) -> Unit)? = null,
     onRemoveOnlineTrack: ((String) -> Unit)? = null,
     onDeleteSong: ((Song) -> Unit)? = null,
     onAddToPlaylist: ((Song) -> Unit)? = null,
     onRemoveFromPlaylist: ((Song) -> Unit)? = null
 ) {
-    val context = LocalContext.current
-    val downloadIndex = remember { DownloadIndex.getInstance(context) }
+    val showMessage = LocalShowMessage.current
     var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
-    val activeDownloads by SongDownloadService.activeDownloads.collectAsState()
+    val activeDownloads by (downloader?.activeDownloads ?: remember { MutableStateFlow(emptyMap()) }).collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Detail Header
@@ -847,35 +846,8 @@ private fun PlaylistDetailView(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
-                            if (isOffline) {
-                                Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to sync playlist.", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            when (networkPolicyManager?.checkDownloadPrecondition()) {
-                                is DownloadPrecondition.BlockedOfflineMode -> {
-                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to sync playlist.", Toast.LENGTH_SHORT).show()
-                                }
-                                is DownloadPrecondition.BlockedNoNetwork -> {
-                                    Toast.makeText(context, "No internet connection available.", Toast.LENGTH_SHORT).show()
-                                }
-                                is DownloadPrecondition.BlockedMetered -> {
-                                    Toast.makeText(context, "Downloads blocked on metered network (check Settings).", Toast.LENGTH_SHORT).show()
-                                }
-                                else -> {
-                                    notDownloaded.forEach { ot ->
-                                        val ytTrack = YouTubeTrack(
-                                            id = ot.id,
-                                            title = ot.title,
-                                            uploaderName = ot.artist,
-                                            durationSeconds = ot.durationSeconds,
-                                            thumbnailUrl = ot.thumbnailUrl,
-                                            webUrl = ot.webUrl
-                                        )
-                                        SongDownloadService.startDownload(context, ytTrack)
-                                    }
-                                    Toast.makeText(context, "Syncing ${notDownloaded.size} tracks for offline playback in background...", Toast.LENGTH_SHORT).show()
-                                }
+                            if (startDownloads(downloader, notDownloaded, "sync playlist", showMessage)) {
+                                showMessage("Syncing ${notDownloaded.size} tracks for offline playback in background...")
                             }
                         },
                         shape = RoundedCornerShape(10.dp),
@@ -942,7 +914,7 @@ private fun PlaylistDetailView(
                 Button(
                     onClick = {
                         onPlayAll()
-                        offlineSkipNotice?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                        offlineSkipNotice?.let { showMessage(it) }
                     },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
@@ -954,7 +926,7 @@ private fun PlaylistDetailView(
                 FilledTonalButton(
                     onClick = {
                         onShuffleAll()
-                        offlineSkipNotice?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                        offlineSkipNotice?.let { showMessage(it) }
                     },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
@@ -1025,42 +997,17 @@ private fun PlaylistDetailView(
                             downloadProgress = activeDownloads[track.id],
                             onTrackClick = {
                                 if (localMatch != null) {
-                                    Toast.makeText(context, "Playing local offline audio: ${localMatch.title}", Toast.LENGTH_SHORT).show()
+                                    showMessage("Playing local offline audio: ${localMatch.title}")
                                     onSongClick(localMatch)
                                 } else if (isOfflineOnlyMode) {
-                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to stream.", Toast.LENGTH_SHORT).show()
+                                    showMessage("Offline Only Mode is active. Switch to Online Mode to stream.")
                                 } else {
                                     onPlayOnlineTrack?.invoke(track)
                                 }
                             },
                             onDownloadClick = {
-                                val isOffline = networkPolicyManager?.isOfflineOnlyMode ?: false
-                                if (isOffline) {
-                                    Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to download.", Toast.LENGTH_SHORT).show()
-                                    return@OnlineTrackRowItem
-                                }
-                                when (networkPolicyManager?.checkDownloadPrecondition()) {
-                                    is DownloadPrecondition.BlockedOfflineMode -> {
-                                        Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to download.", Toast.LENGTH_SHORT).show()
-                                    }
-                                    is DownloadPrecondition.BlockedNoNetwork -> {
-                                        Toast.makeText(context, "No internet connection available.", Toast.LENGTH_SHORT).show()
-                                    }
-                                    is DownloadPrecondition.BlockedMetered -> {
-                                        Toast.makeText(context, "Downloads blocked on metered network (check Settings).", Toast.LENGTH_SHORT).show()
-                                    }
-                                    else -> {
-                                        val ytTrack = YouTubeTrack(
-                                            id = track.id,
-                                            title = track.title,
-                                            uploaderName = track.artist,
-                                            durationSeconds = track.durationSeconds,
-                                            thumbnailUrl = track.thumbnailUrl,
-                                            webUrl = track.webUrl
-                                        )
-                                        SongDownloadService.startDownload(context, ytTrack)
-                                        Toast.makeText(context, "Downloading in background: ${track.title}", Toast.LENGTH_SHORT).show()
-                                    }
+                                if (startDownloads(downloader, listOf(track), "download", showMessage)) {
+                                    showMessage("Downloading in background: ${track.title}")
                                 }
                             },
                             onRemoveClick = if (onRemoveOnlineTrack != null) {
@@ -1093,7 +1040,7 @@ private fun OnlineTrackRowItem(
     isLocallyAvailable: Boolean = false,
     // Another song with the same title and artist is on the phone (not this exact video)
     hasSimilarLocal: Boolean = false,
-    // 0..1 while SongDownloadService is downloading this track, null otherwise
+    // 0..1 while this track is downloading, null otherwise
     downloadProgress: Float? = null,
     onTrackClick: () -> Unit,
     onDownloadClick: () -> Unit,
@@ -1123,7 +1070,7 @@ private fun OnlineTrackRowItem(
             ) {
                 if (!track.thumbnailUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
+                        model = ImageRequest.Builder(LocalPlatformContext.current)
                             .data(track.thumbnailUrl)
                             .crossfade(true)
                             .build(),
@@ -1272,6 +1219,29 @@ private fun OnlineTrackRowItem(
 }
 
 // The file the app downloaded from exactly this online track, if it's still on the phone
-private fun downloadedCopyOf(track: OnlineTrack, allSongs: List<Song>, downloadIndex: DownloadIndex): Song? =
-    downloadIndex.downloadedIdFor(track.webUrl.ifBlank { track.id })
+/**
+ * Starts background downloads of [tracks], or tells the user why they can't start.
+ * [action] completes "Switch to Online Mode to …". Returns true if the downloads started.
+ */
+private fun startDownloads(
+    downloader: TrackDownloader?,
+    tracks: List<OnlineTrack>,
+    action: String,
+    showMessage: (String) -> Unit
+): Boolean {
+    if (downloader == null) return false
+    when (downloader.blockedReason()) {
+        DownloadBlock.OFFLINE_MODE -> showMessage("Offline Only Mode is active. Switch to Online Mode to $action.")
+        DownloadBlock.NO_NETWORK -> showMessage("No internet connection available.")
+        DownloadBlock.METERED -> showMessage("Downloads blocked on metered network (check Settings).")
+        null -> {
+            downloader.start(tracks)
+            return true
+        }
+    }
+    return false
+}
+
+private fun downloadedCopyOf(track: OnlineTrack, allSongs: List<Song>, downloadIndex: DownloadIndex?): Song? =
+    downloadIndex?.downloadedIdFor(track.webUrl.ifBlank { track.id })
         ?.let { id -> allSongs.find { it.id == id } }

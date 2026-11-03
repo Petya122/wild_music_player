@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import com.wildmusicplayer.service.AndroidTrackDownloader
 import com.wildmusicplayer.ui.LocalShowMessage
 import com.wildmusicplayer.ui.LocalAudioEffects
 import androidx.compose.ui.res.painterResource
@@ -186,6 +187,7 @@ fun MusicPlayerApp(
     val downloadManager = remember { YouTubeDownloadManager(context) }
     val updateChecker = remember { UpdateChecker.getInstance(context) }
     val networkPolicyManager = remember { NetworkPolicyManager.getInstance(context) }
+    val trackDownloader = remember { AndroidTrackDownloader(context.applicationContext) }
 
     val isOfflineOnlyMode by networkPolicyManager.offlineOnlyMode.collectAsState()
     val setOfflineMode: (Boolean) -> Unit = { enabled ->
@@ -599,8 +601,9 @@ fun MusicPlayerApp(
                                 onToggleFavorite = toggleFavorite,
                                 onCreatePlaylist = { name, songIds -> playlistRepository.createPlaylist(name, songIds) },
                                 onDeletePlaylist = { playlistRepository.deletePlaylist(it) },
+                                downloadIndex = library.downloadIndex,
                                 isOfflineOnlyMode = isOfflineOnlyMode,
-                                networkPolicyManager = networkPolicyManager,
+                                downloader = trackDownloader,
                                 onRemoveOnlineTrack = { playlistId, trackId ->
                                     playlistRepository.removeOnlineTrackFromPlaylist(playlistId, trackId)
                                 },
