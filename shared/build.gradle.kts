@@ -15,8 +15,13 @@ kotlin {
         minSdk = 26
         withHostTestBuilder {}
     }
-    iosArm64()
-    iosSimulatorArm64()
+    // The iOS app links the shared code as a static framework named "Shared"
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
 
     jvmToolchain(17)
 

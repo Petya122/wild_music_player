@@ -13,9 +13,25 @@ interface MusicLibrary {
 /** Starts and controls playback: Media3 on Android, AVPlayer on iOS. */
 interface PlayerController {
     val currentSong: StateFlow<Song?>
+    val isPlaying: StateFlow<Boolean>
+    val currentPosition: StateFlow<Long>
+    val duration: StateFlow<Long>
+    val isShuffleEnabled: StateFlow<Boolean>
+
+    /** One of [RepeatMode]. */
+    val repeatMode: StateFlow<Int>
+
     fun playSong(song: Song, playlist: List<Song>)
     fun playQueue(songs: List<Song>, startIndex: Int)
+    fun togglePlayPause()
     fun skipToNext()
+    fun skipToPrevious()
+    fun seekTo(positionMs: Long)
+    fun toggleShuffle()
+    fun toggleRepeatMode()
+
+    /** Stops playback and clears the queue (the player bar disappears). */
+    fun stopPlayback()
 
     /** Queued online songs that have been downloaded since play from the file instead. */
     fun useDownloadedCopies(downloadIndex: DownloadIndex)

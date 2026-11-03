@@ -34,11 +34,44 @@ jobs:
           set -o pipefail
           ./gradlew :shared:iosSimulatorArm64Test -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon 2>&1 | tee gradle-ios.log
 
+      # The iPhone app (iosApp/): an Xcode project generated from project.yml, wrapping the shared code
+      - name: Generate Xcode Project
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen generate
+
+      - name: Build iOS App for the Simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/WildMusicPlayer.xcodeproj -scheme WildMusicPlayer -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcode-ios.log
+
+      - name: Build Unsigned iPhone App (IPA)
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/WildMusicPlayer.xcodeproj -scheme WildMusicPlayer -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee -a xcode-ios.log
+          # An IPA is the .app inside a Payload folder, zipped. Sideloading tools sign it for your iPhone.
+          mkdir -p Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/WildMusicPlayer.app Payload/
+          zip -qr WildMusicPlayer-unsigned.ipa Payload
+          cd build/ios/Build/Products/Debug-iphonesimulator && zip -qr ../../../../../WildMusicPlayer-simulator.zip WildMusicPlayer.app
+
+      - name: Upload iOS Builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: |
+            WildMusicPlayer-unsigned.ipa
+            WildMusicPlayer-simulator.zip
+
       # Logs need a GitHub login to read; annotations are public, so failures are repeated there
       - name: Report Failures as Annotations
         if: failure()
         run: |
-          { grep -E "^e: " gradle-ios.log; grep -E "What went wrong|FAILED|Exception" gradle-ios.log; } | head -n 20 | while IFS= read -r line; do
+          { grep -E "^e: " gradle-ios.log xcode-ios.log; grep -E "error:|What went wrong|FAILED|Exception" gradle-ios.log xcode-ios.log; } 2>/dev/null | head -n 25 | while IFS= read -r line; do
             echo "::error::$line"
           done
           for f in shared/build/test-results/iosSimulatorArm64Test/*.xml; do

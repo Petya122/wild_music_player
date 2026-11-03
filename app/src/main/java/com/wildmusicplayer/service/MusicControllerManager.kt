@@ -44,19 +44,19 @@ class MusicControllerManager(private val context: Context) : PlayerController {
     override val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
 
     private val _isPlaying = MutableStateFlow(false)
-    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+    override val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
     private val _currentPosition = MutableStateFlow(0L)
-    val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
+    override val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
 
     private val _duration = MutableStateFlow(0L)
-    val duration: StateFlow<Long> = _duration.asStateFlow()
+    override val duration: StateFlow<Long> = _duration.asStateFlow()
 
     private val _isShuffleEnabled = MutableStateFlow(false)
-    val isShuffleEnabled: StateFlow<Boolean> = _isShuffleEnabled.asStateFlow()
+    override val isShuffleEnabled: StateFlow<Boolean> = _isShuffleEnabled.asStateFlow()
 
     private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
-    val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
+    override val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
@@ -183,7 +183,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
         playQueue(listOf(virtualSong), 0)
     }
 
-    fun togglePlayPause() {
+    override fun togglePlayPause() {
         val controller = mediaController ?: return
         if (controller.isPlaying) {
             controller.pause()
@@ -196,21 +196,21 @@ class MusicControllerManager(private val context: Context) : PlayerController {
         mediaController?.seekToNextMediaItem()
     }
 
-    fun skipToPrevious() {
+    override fun skipToPrevious() {
         mediaController?.seekToPreviousMediaItem()
     }
 
-    fun seekTo(positionMs: Long) {
+    override fun seekTo(positionMs: Long) {
         mediaController?.seekTo(positionMs)
         _currentPosition.value = positionMs
     }
 
-    fun toggleShuffle() {
+    override fun toggleShuffle() {
         val controller = mediaController ?: return
         controller.shuffleModeEnabled = !controller.shuffleModeEnabled
     }
 
-    fun toggleRepeatMode() {
+    override fun toggleRepeatMode() {
         val controller = mediaController ?: return
         val nextMode = when (controller.repeatMode) {
             Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
@@ -275,7 +275,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
      * removing the system media notification and dismissing the player bar
      * while keeping the controller connected for future plays.
      */
-    fun stopPlayback() {
+    override fun stopPlayback() {
         // Clearing the queue also makes PlaybackService forget the saved one, so the car won't bring it back
         stopProgressUpdates()
         mediaController?.stop()

@@ -1,0 +1,43 @@
+# Xcode project for the iPhone app, generated with XcodeGen (`cd iosApp && xcodegen generate`).
+# The app itself is the shared Kotlin/Compose code; this only wraps it. GitHub's macOS CI builds it.
+name: WildMusicPlayer
+options:
+  bundleIdPrefix: com.wildmusicplayer
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  WildMusicPlayer:
+    type: application
+    platform: iOS
+    sources:
+      - WildMusicPlayer
+    info:
+      path: WildMusicPlayer/Info.plist
+      properties:
+        CFBundleDisplayName: Wild Music
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        # Keep playing with the screen off or another app open
+        UIBackgroundModes: [audio]
+        # Show the app's Documents folder in the Files app, so songs can be copied in
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        CADisableMinimumFrameDurationOnPhone: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wildmusicplayer.ios
+        MARKETING_VERSION: "0.8.7"
+        CURRENT_PROJECT_VERSION: "41"
+        # The Kotlin framework only exists for arm64 (Apple Silicon simulators and iPhones)
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: ["-framework", "Shared"]
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      - name: Compile Kotlin Framework
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
