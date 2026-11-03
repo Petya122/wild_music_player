@@ -256,6 +256,38 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         return migratedCount
     }
 
+    /**
+     * Adds what a backup restore found; never removes anything. A playlist whose name already exists
+     * gets the songs it's missing; other playlists are added. Favorites are joined, and recently played
+     * songs not in the list yet go to its end.
+     */
+    fun mergeRestored(playlists: List<Playlist>, favoriteIds: Set<Long>, recentIds: List<Long>) {
+        val updated = _customPlaylists.value.toMutableList()
+        for (restored in playlists) {
+            val index = updated.indexOfFirst { it.name.equals(restored.name, ignoreCase = true) }
+            if (index < 0) {
+                updated += restored
+                continue
+            }
+            val existing = updated[index]
+            val trackIds = existing.onlineTracks.map { it.id }.toSet()
+            updated[index] = existing.copy(
+                songIds = existing.songIds + restored.songIds.filter { it !in existing.songIds },
+                onlineTracks = existing.onlineTracks + restored.onlineTracks.filter { it.id !in trackIds }
+            )
+        }
+        _customPlaylists.value = updated
+        savePlaylists(updated)
+
+        val favorites = _favoriteSongIds.value + favoriteIds
+        _favoriteSongIds.value = favorites
+        prefs.putStringSet(KEY_FAVORITES, favorites.map { it.toString() }.toSet())
+
+        val recent = (_recentlyPlayedIds.value + recentIds.filter { it !in _recentlyPlayedIds.value }).take(20)
+        _recentlyPlayedIds.value = recent
+        prefs.putString(KEY_RECENTLY_PLAYED, storageJson.encodeToString(idListSerializer, recent))
+    }
+
     private fun savePlaylists(list: List<Playlist>) {
         prefs.putString(KEY_CUSTOM_PLAYLISTS, storageJson.encodeToString(playlistListSerializer, list.map { it.toJson() }))
     }

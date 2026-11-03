@@ -120,7 +120,8 @@ class AudioRepository(private val context: Context) : MusicLibrary {
                         duration = duration,
                         contentUri = contentUri.toString(),
                         albumArtUri = albumArtUri?.toString(),
-                        folderName = folderName
+                        folderName = folderName,
+                        filePath = rawData?.takeIf { it.isNotBlank() }
                     )
                 )
             }

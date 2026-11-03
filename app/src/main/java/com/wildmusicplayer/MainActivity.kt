@@ -9,6 +9,7 @@ import com.wildmusicplayer.ui.components.QueueSheet
 import com.wildmusicplayer.ui.QueueActions
 import com.wildmusicplayer.ui.LocalQueueActions
 import com.wildmusicplayer.ui.LocalSleepTimer
+import com.wildmusicplayer.ui.screens.rememberPlaylistExporter
 import com.wildmusicplayer.ui.LocalLyrics
 import com.wildmusicplayer.data.lyricsRepository
 import com.wildmusicplayer.service.SleepTimerManager
@@ -288,6 +289,7 @@ fun MusicPlayerApp(
     }
 
     val playlistRepository = library.playlists
+    val exportPlaylist = rememberPlaylistExporter(songs)
     val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
     val customPlaylists by playlistRepository.customPlaylists.collectAsState()
     val completedTrackIds by SongDownloadService.completedTrackIds.collectAsState()
@@ -543,6 +545,7 @@ fun MusicPlayerApp(
                                 onExitApp()
                             },
                             bottomPadding = contentBottomPadding,
+                            librarySongs = songs,
                             isOfflineOnlyMode = isOfflineOnlyMode,
                             onOfflineOnlyModeToggled = setOfflineMode,
                             downloadManager = downloadManager,
@@ -620,7 +623,8 @@ fun MusicPlayerApp(
                                 },
                                 onDeleteSong = requestDeleteSong,
                                 onAddToPlaylist = { songForPlaylistPicker = it },
-                                onRemoveSongFromPlaylist = { playlistId, songId -> playlistRepository.removeSongFromPlaylist(playlistId, songId) }
+                                onRemoveSongFromPlaylist = { playlistId, songId -> playlistRepository.removeSongFromPlaylist(playlistId, songId) },
+                                onExportPlaylist = exportPlaylist
                             )
                         }
                         NavigationTab.DOWNLOADER -> {

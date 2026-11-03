@@ -13,7 +13,9 @@ data class Song(
     val duration: Long,
     val contentUri: String,
     val albumArtUri: String?,
-    val folderName: String = "Music"
+    val folderName: String = "Music",
+    /** Where the file is on the phone ("/storage/emulated/0/Music/song.mp3"), when known. */
+    val filePath: String? = null
 ) {
     /** True for YouTube tracks whose stream URL is resolved at play time by PlaybackService. */
     val isOnline: Boolean

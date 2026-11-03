@@ -38,6 +38,13 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.9", listOf(
+            ChangelogEntry("💾", "Back Up & Restore Playlists", "Settings → Backup & Restore saves all your playlists, favorites and recently played to a file. Restore it after a reinstall or on a new phone: songs are found again by their file, or by title, artist and length. Restoring only adds, it never deletes."),
+            ChangelogEntry("📤", "Export as M3U8", "The new save button on each playlist writes an .m3u8 file that other music players can open."),
+            ChangelogEntry("🧹", "Tidier Settings", "The Settings screen was reorganized behind the scenes. It looks the same.")
+        )
+    ),
+    ReleaseNotes(
         "0.8.8", listOf(
             ChangelogEntry("🎤", "Lyrics", "Tap the lyrics button next to the heart in Now Playing. Lyrics come from LRCLIB and follow the song line by line where available; tap a line to jump there. Once looked up, they're saved and work in Offline Mode too.")
         )

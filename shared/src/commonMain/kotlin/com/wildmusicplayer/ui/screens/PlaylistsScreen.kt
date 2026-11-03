@@ -25,6 +25,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material.icons.filled.PlaylistRemove
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -125,7 +126,8 @@ fun PlaylistsScreen(
     onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null,
     onDeleteSong: ((Song) -> Unit)? = null,
     onAddToPlaylist: ((Song) -> Unit)? = null,
-    onRemoveSongFromPlaylist: ((playlistId: String, songId: Long) -> Unit)? = null
+    onRemoveSongFromPlaylist: ((playlistId: String, songId: Long) -> Unit)? = null,
+    onExportPlaylist: ((Playlist) -> Unit)? = null
 ) {
     var selectedPlaylist by remember { mutableStateOf<PlaylistSelection>(PlaylistSelection.None) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -372,12 +374,23 @@ fun PlaylistsScreen(
                             icon = if (onlineCount > 0) Icons.Default.CloudSync else Icons.AutoMirrored.Filled.QueueMusic,
                             iconTint = if (onlineCount > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary,
                             trailingAction = {
-                                IconButton(onClick = { onDeletePlaylist(playlist.id) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete Playlist",
-                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-                                    )
+                                Row {
+                                    if (onExportPlaylist != null) {
+                                        IconButton(onClick = { onExportPlaylist(playlist) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.SaveAlt,
+                                                contentDescription = "Export as M3U8",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    IconButton(onClick = { onDeletePlaylist(playlist.id) }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete Playlist",
+                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                                        )
+                                    }
                                 }
                             },
                             onClick = { selectedPlaylist = PlaylistSelection.Custom(playlist) }
