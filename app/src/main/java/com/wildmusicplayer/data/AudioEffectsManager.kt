@@ -1,5 +1,6 @@
 package com.wildmusicplayer.data
 
+import com.wildmusicplayer.platform.AudioEffects
 import android.content.Context
 import android.content.SharedPreferences
 import android.media.audiofx.LoudnessEnhancer
@@ -18,7 +19,7 @@ import kotlin.math.pow
  * than the target are turned down with the player volume, quieter ones up with the
  * LoudnessEnhancer, on top of the user's own volume and dB boost.
  */
-class AudioEffectsManager private constructor(context: Context) {
+class AudioEffectsManager private constructor(context: Context) : AudioEffects {
 
     private val appContext = context.applicationContext
 
@@ -35,16 +36,16 @@ class AudioEffectsManager private constructor(context: Context) {
         }
 
     private val _volume = MutableStateFlow(prefs.getFloat(KEY_VOLUME, 1.0f))
-    val volume: StateFlow<Float> = _volume.asStateFlow()
+    override val volume: StateFlow<Float> = _volume.asStateFlow()
 
     private val _isMuted = MutableStateFlow(prefs.getBoolean(KEY_IS_MUTED, false))
-    val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
+    override val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
 
     private val _volumeBoostDb = MutableStateFlow(prefs.getInt(KEY_BOOST_DB, 0))
-    val volumeBoostDb: StateFlow<Int> = _volumeBoostDb.asStateFlow()
+    override val volumeBoostDb: StateFlow<Int> = _volumeBoostDb.asStateFlow()
 
     private val _isNormalizationEnabled = MutableStateFlow(prefs.getBoolean(KEY_NORMALIZATION, false))
-    val isNormalizationEnabled: StateFlow<Boolean> = _isNormalizationEnabled.asStateFlow()
+    override val isNormalizationEnabled: StateFlow<Boolean> = _isNormalizationEnabled.asStateFlow()
 
     private var player: ExoPlayer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
@@ -63,7 +64,7 @@ class AudioEffectsManager private constructor(context: Context) {
         setupLoudnessEnhancer(exoPlayer.audioSessionId)
     }
 
-    fun setVolume(newVolume: Float) {
+    override fun setVolume(newVolume: Float) {
         val clamped = newVolume.coerceIn(0f, 1f)
         _volume.value = clamped
         if (clamped > 0f && _isMuted.value) {
@@ -78,7 +79,7 @@ class AudioEffectsManager private constructor(context: Context) {
         applyVolumeToPlayer()
     }
 
-    fun toggleMute() {
+    override fun toggleMute() {
         val nextMuted = !_isMuted.value
         _isMuted.value = nextMuted
         prefs.edit().putBoolean(KEY_IS_MUTED, nextMuted).apply()
@@ -92,14 +93,14 @@ class AudioEffectsManager private constructor(context: Context) {
         applyVolumeToPlayer()
     }
 
-    fun setVolumeBoostDb(db: Int) {
+    override fun setVolumeBoostDb(db: Int) {
         val clamped = db.coerceIn(0, MAX_BOOST_DB)
         _volumeBoostDb.value = clamped
         prefs.edit().putInt(KEY_BOOST_DB, clamped).apply()
         applyDspEnhancements()
     }
 
-    fun setNormalizationEnabled(enabled: Boolean) {
+    override fun setNormalizationEnabled(enabled: Boolean) {
         _isNormalizationEnabled.value = enabled
         prefs.edit().putBoolean(KEY_NORMALIZATION, enabled).apply()
         // Measure the library in the background so every song has a level to even out to

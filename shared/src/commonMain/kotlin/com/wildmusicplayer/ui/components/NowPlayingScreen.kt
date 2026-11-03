@@ -54,13 +54,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.Player
-import com.wildmusicplayer.data.AudioEffectsManager
+import com.wildmusicplayer.platform.RepeatMode
+import com.wildmusicplayer.ui.LocalAudioEffects
 import com.wildmusicplayer.model.Song
 
 /**
@@ -87,8 +86,7 @@ fun NowPlayingScreen(
     onToggleFavorite: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val audioEffectsManager = remember { AudioEffectsManager.getInstance(context) }
+    val audioEffectsManager = LocalAudioEffects.current
     var showSoundSheet by remember { mutableStateOf(false) }
 
     val volume by audioEffectsManager.volume.collectAsState()
@@ -434,8 +432,8 @@ fun NowPlayingScreen(
                 // Repeat Button (Synced with Nissan 'RPT 1' button)
                 IconButton(onClick = onToggleRepeat) {
                     val (icon, tint) = when (repeatMode) {
-                        Player.REPEAT_MODE_ONE -> Pair(Icons.Default.RepeatOne, MaterialTheme.colorScheme.primary)
-                        Player.REPEAT_MODE_ALL -> Pair(Icons.Default.Repeat, MaterialTheme.colorScheme.primary)
+                        RepeatMode.ONE -> Pair(Icons.Default.RepeatOne, MaterialTheme.colorScheme.primary)
+                        RepeatMode.ALL -> Pair(Icons.Default.Repeat, MaterialTheme.colorScheme.primary)
                         else -> Pair(Icons.Default.Repeat, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                     }
                     Icon(

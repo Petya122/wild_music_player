@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.components
 
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -30,14 +31,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.wildmusicplayer.R
 
 @Composable
 fun SplashScreen(
+    logo: Painter,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "SplashPulse")
@@ -89,7 +89,7 @@ fun SplashScreen(
 
                 // Circular WMP Logo
                 Image(
-                    painter = painterResource(id = R.drawable.wmp_logo),
+                    painter = logo,
                     contentDescription = "Wild Music Player Logo",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

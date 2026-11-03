@@ -5,6 +5,10 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import com.wildmusicplayer.ui.LocalShowMessage
+import com.wildmusicplayer.ui.LocalAudioEffects
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.CompositionLocalProvider
 import com.wildmusicplayer.ui.LibraryViewModel
 import com.wildmusicplayer.data.getInstance
 import com.wildmusicplayer.data.AppSettings
@@ -141,6 +145,11 @@ class MainActivity : ComponentActivity() {
             val themeName by settings.themeMode.collectAsState()
             val currentTheme = ThemeMode.entries.firstOrNull { it.name == themeName } ?: ThemeMode.SYSTEM
 
+            val appContext = LocalContext.current.applicationContext
+            CompositionLocalProvider(
+                LocalShowMessage provides { message -> Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() },
+                LocalAudioEffects provides AudioEffectsManager.getInstance(appContext)
+            ) {
             WildMusicPlayerTheme(themeMode = currentTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -157,6 +166,7 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+            }
             }
         }
     }
@@ -695,6 +705,7 @@ fun MusicPlayerApp(
         if (showWhatsNewDialog) {
             WhatsNewDialog(
                 versionName = BuildConfig.VERSION_NAME,
+                logo = painterResource(R.drawable.wmp_logo),
                 onDismiss = { showWhatsNewDialog = false }
             )
         }
@@ -704,7 +715,7 @@ fun MusicPlayerApp(
             visible = isSplashVisible,
             exit = fadeOut(animationSpec = tween(600))
         ) {
-            SplashScreen()
+            SplashScreen(logo = painterResource(R.drawable.wmp_logo))
         }
     }
 }

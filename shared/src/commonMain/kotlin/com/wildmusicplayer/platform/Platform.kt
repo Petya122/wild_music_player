@@ -22,3 +22,10 @@ interface PlayerController {
     /** Disconnects from the playback service (playback itself keeps going). */
     fun release()
 }
+
+/** Repeat modes, numbered like Media3's Player.REPEAT_MODE_* (also how saved queues store them). */
+object RepeatMode {
+    const val OFF = 0
+    const val ONE = 1
+    const val ALL = 2
+}

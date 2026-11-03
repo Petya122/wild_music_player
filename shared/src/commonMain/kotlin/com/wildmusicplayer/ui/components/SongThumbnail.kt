@@ -14,10 +14,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import coil3.compose.LocalPlatformContext
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import coil3.request.crossfade
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 
 /**
  * Reusable high-performance album art image component.
@@ -40,7 +41,7 @@ fun SongThumbnail(
 
         if (albumArtUri != null) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
+                model = ImageRequest.Builder(LocalPlatformContext.current)
                     .data(albumArtUri)
                     .size(256)
                     .crossfade(false)

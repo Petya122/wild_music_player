@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.components
 
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,11 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.wildmusicplayer.R
 
 private class ChangelogEntry(val emoji: String, val title: String, val desc: String)
 
@@ -149,6 +148,7 @@ private val releaseHistory = listOf(
 @Composable
 fun WhatsNewDialog(
     versionName: String,
+    logo: Painter,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -170,7 +170,7 @@ fun WhatsNewDialog(
             ) {
                 // Circular Logo Badge
                 Image(
-                    painter = painterResource(id = R.drawable.wmp_logo),
+                    painter = logo,
                     contentDescription = "Logo",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

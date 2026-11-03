@@ -45,12 +45,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.wildmusicplayer.data.AudioEffectsManager
+import com.wildmusicplayer.platform.AudioEffects
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SoundSettingsSheet(
-    audioEffectsManager: AudioEffectsManager,
+    audioEffectsManager: AudioEffects,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
