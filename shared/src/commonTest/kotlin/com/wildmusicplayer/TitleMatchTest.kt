@@ -3,9 +3,9 @@ package com.wildmusicplayer
 import com.wildmusicplayer.data.artistsMatch
 import com.wildmusicplayer.data.isDownloadedCopyOf
 import com.wildmusicplayer.data.titlesMatch
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class TitleMatchTest {
 

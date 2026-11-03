@@ -20,8 +20,8 @@ android {
         applicationId = "com.wildmusicplayer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
-        versionName = "0.8.3"
+        versionCode = 38
+        versionName = "0.8.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -73,6 +73,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
 
     // AndroidX Media3 (ExoPlayer + Bluetooth MediaSession)

@@ -40,7 +40,7 @@ fun isDownloadedCopyOf(
  * Same artist, allowing for channel suffixes ("O-Zone Official", "Queen - Topic"), accents and
  * features ("Peat Jr & Fernando" matches "Peat Jr").
  */
-internal fun artistsMatch(localArtist: String, onlineArtist: String): Boolean {
+fun artistsMatch(localArtist: String, onlineArtist: String): Boolean {
     val local = normalizeForSearch(cleanChannelName(localArtist))
     val online = normalizeForSearch(cleanChannelName(onlineArtist))
     if (local.isEmpty() || online.isEmpty()) return false
@@ -49,7 +49,7 @@ internal fun artistsMatch(localArtist: String, onlineArtist: String): Boolean {
     return online.split(' ').any { it.length >= 3 && it in localWords }
 }
 
-internal fun isUnknownArtist(artist: String): Boolean =
+fun isUnknownArtist(artist: String): Boolean =
     artist.isBlank() ||
         artist.equals("Unknown Artist", ignoreCase = true) ||
         artist.equals("<unknown>", ignoreCase = true)

@@ -356,20 +356,6 @@ class UpdateChecker private constructor(private val context: Context) {
             }
         }
 
-        internal fun isNewerVersion(remote: String, current: String): Boolean {
-            val remoteParts = remote.split(".").mapNotNull { it.toIntOrNull() }
-            val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }
-
-            val maxLength = maxOf(remoteParts.size, currentParts.size)
-            for (i in 0 until maxLength) {
-                val r = remoteParts.getOrElse(i) { 0 }
-                val c = currentParts.getOrElse(i) { 0 }
-                if (r > c) return true
-                if (r < c) return false
-            }
-            return false
-        }
-
         fun formatFileSize(bytes: Long): String {
             if (bytes <= 0) return "0 KB"
             if (bytes < 1024) return "$bytes B"

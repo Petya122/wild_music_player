@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "wild_music_player"
 include(":app")
+include(":shared")

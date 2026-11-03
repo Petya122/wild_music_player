@@ -39,6 +39,11 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.8.4", listOf(
+            ChangelogEntry("🍎", "Groundwork for iPhone", "The first step toward an iPhone version: song matching, title cleanup and loudness measuring now live in shared code that also builds for iOS. Nothing should look or work differently.")
+        )
+    ),
+    ReleaseNotes(
         "0.8.3", listOf(
             ChangelogEntry("↩️", "Back Stays in Playlists", "Pressing Back inside a playlist now returns to your playlists instead of jumping to Home. With the player open, Back still closes the player first.")
         )
