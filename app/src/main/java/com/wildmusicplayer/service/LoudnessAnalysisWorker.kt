@@ -1,5 +1,6 @@
 package com.wildmusicplayer.service
 
+import com.wildmusicplayer.data.getInstance
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -32,7 +33,7 @@ class LoudnessAnalysisWorker(
         for (song in songs) {
             if (isStopped) break
             if (store.isKnown(song.id)) continue
-            store.put(song.id, LoudnessAnalyzer.measure(applicationContext, song.contentUri))
+            store.put(song.id, LoudnessAnalyzer.measure(applicationContext, android.net.Uri.parse(song.contentUri)))
             measured++
             store.updateProgress(measured, songs.size, running = true)
         }

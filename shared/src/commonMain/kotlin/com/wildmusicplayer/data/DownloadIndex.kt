@@ -1,60 +1,50 @@
 package com.wildmusicplayer.data
 
-import android.content.Context
-import org.json.JSONObject
-import java.io.File
+import com.wildmusicplayer.platform.FileStore
+import com.wildmusicplayer.platform.Lock
+import com.wildmusicplayer.service.storageJson
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 
 /**
  * Remembers which YouTube video each downloaded file came from (video ID → MediaStore ID),
  * so a playlist's online track is only "on the phone" when that exact video was downloaded,
  * not just any song with the same title and artist.
  */
-class DownloadIndex private constructor(private val file: File) {
+class DownloadIndex(private val files: FileStore) {
 
+    private val lock = Lock()
     private val entries: MutableMap<String, Long> by lazy { load() }
 
-    @Synchronized
-    fun record(videoId: String, mediaStoreId: Long) {
+    fun record(videoId: String, mediaStoreId: Long) = lock.withLock {
         entries[videoId] = mediaStoreId
         save()
     }
 
-    @Synchronized
-    fun mediaStoreIdFor(videoId: String): Long? = entries[videoId]
+    fun mediaStoreIdFor(videoId: String): Long? = lock.withLock { entries[videoId] }
 
     /** The MediaStore ID of the downloaded copy of [webUrl], if the app downloaded it. */
     fun downloadedIdFor(webUrl: String): Long? = youTubeVideoId(webUrl)?.let { mediaStoreIdFor(it) }
 
-    @Synchronized
-    fun forgetMediaStoreId(mediaStoreId: Long) {
+    fun forgetMediaStoreId(mediaStoreId: Long) = lock.withLock {
         if (entries.values.removeAll { it == mediaStoreId }) save()
     }
 
     private fun load(): MutableMap<String, Long> = try {
-        val json = JSONObject(file.readText())
-        json.keys().asSequence().associateWith { json.getLong(it) }.toMutableMap()
+        files.readText(FILE_NAME)
+            ?.let { storageJson.decodeFromString(serializer, it).toMutableMap() }
+            ?: mutableMapOf()
     } catch (e: Exception) {
         mutableMapOf()
     }
 
     private fun save() {
-        try {
-            file.writeText(JSONObject(entries as Map<*, *>).toString())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        files.writeText(FILE_NAME, storageJson.encodeToString(serializer, entries))
     }
 
     companion object {
-        @Volatile
-        private var instance: DownloadIndex? = null
-
-        fun getInstance(context: Context): DownloadIndex {
-            return instance ?: synchronized(this) {
-                instance ?: DownloadIndex(File(context.applicationContext.filesDir, "download_index.json"))
-                    .also { instance = it }
-            }
-        }
+        const val FILE_NAME = "download_index.json"
+        private val serializer = MapSerializer(String.serializer(), Long.serializer())
     }
 }
 

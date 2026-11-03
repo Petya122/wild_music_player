@@ -1,36 +1,36 @@
 package com.wildmusicplayer.data
 
-import android.content.Context
+import com.wildmusicplayer.platform.FileStore
+import com.wildmusicplayer.platform.Lock
+import com.wildmusicplayer.service.storageJson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.json.JSONObject
-import java.io.File
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 
 /**
- * Measured loudness (LUFS) per MediaStore song ID, saved in the app's files.
+ * Measured loudness (LUFS) per song ID, saved in the app's files.
  * Songs that couldn't be measured are remembered too, so they aren't retried every time.
  * (Moves to a proper database in the production phase.)
  */
-class LoudnessStore private constructor(private val file: File) {
+class LoudnessStore(private val files: FileStore) {
 
     /** Background measuring: [measured] of [total] library songs done. */
     data class Progress(val measured: Int, val total: Int, val running: Boolean)
 
+    private val lock = Lock()
     private val values: MutableMap<Long, Double> by lazy { load() }
 
     private val _progress = MutableStateFlow(Progress(0, 0, running = false))
     val progress: StateFlow<Progress> = _progress.asStateFlow()
 
     /** The song's loudness, or null if it hasn't been (or couldn't be) measured. */
-    @Synchronized
-    fun get(songId: Long): Double? = values[songId]?.takeIf { it != UNMEASURABLE }
+    fun get(songId: Long): Double? = lock.withLock { values[songId]?.takeIf { it != UNMEASURABLE } }
 
-    @Synchronized
-    fun isKnown(songId: Long): Boolean = values.containsKey(songId)
+    fun isKnown(songId: Long): Boolean = lock.withLock { values.containsKey(songId) }
 
-    @Synchronized
-    fun put(songId: Long, loudnessLufs: Double?) {
+    fun put(songId: Long, loudnessLufs: Double?) = lock.withLock {
         values[songId] = loudnessLufs ?: UNMEASURABLE
         save()
     }
@@ -40,36 +40,22 @@ class LoudnessStore private constructor(private val file: File) {
     }
 
     private fun load(): MutableMap<Long, Double> = try {
-        val json = JSONObject(file.readText())
-        json.keys().asSequence()
-            .mapNotNull { key -> key.toLongOrNull()?.let { it to json.getDouble(key) } }
-            .toMap(mutableMapOf())
+        val stored = files.readText(FILE_NAME)?.let { storageJson.decodeFromString(serializer, it) } ?: emptyMap()
+        stored.entries.mapNotNull { (key, lufs) -> key.toLongOrNull()?.let { it to lufs } }.toMap(mutableMapOf())
     } catch (e: Exception) {
         mutableMapOf()
     }
 
     private fun save() {
-        try {
-            val json = JSONObject()
-            values.forEach { (id, lufs) -> json.put(id.toString(), lufs) }
-            file.writeText(json.toString())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        files.writeText(FILE_NAME, storageJson.encodeToString(serializer, values.mapKeys { it.key.toString() }))
     }
 
     companion object {
+        const val FILE_NAME = "loudness.json"
+
         // Stored for songs that couldn't be decoded (JSON has no NaN)
         private const val UNMEASURABLE = -999.0
 
-        @Volatile
-        private var instance: LoudnessStore? = null
-
-        fun getInstance(context: Context): LoudnessStore {
-            return instance ?: synchronized(this) {
-                instance ?: LoudnessStore(File(context.applicationContext.filesDir, "loudness.json"))
-                    .also { instance = it }
-            }
-        }
+        private val serializer = MapSerializer(String.serializer(), Double.serializer())
     }
 }

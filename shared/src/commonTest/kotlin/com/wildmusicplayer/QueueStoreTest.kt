@@ -3,17 +3,13 @@ package com.wildmusicplayer
 import com.wildmusicplayer.service.QueueStore
 import com.wildmusicplayer.service.QueuedSong
 import com.wildmusicplayer.service.SavedQueue
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Rule
-import org.junit.Test
-import org.junit.rules.TemporaryFolder
-import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class QueueStoreTest {
 
-    @get:Rule
-    val tmp = TemporaryFolder()
+    private val files = FakeFileStore()
 
     private val queue = SavedQueue(
         songs = listOf(
@@ -26,7 +22,7 @@ class QueueStoreTest {
         repeatMode = 2
     )
 
-    private fun store() = QueueStore(File(tmp.root, "last_queue.json"))
+    private fun store() = QueueStore(files)
 
     @Test
     fun saveAndLoadRoundTrip() {
@@ -42,7 +38,7 @@ class QueueStoreTest {
 
     @Test
     fun corruptFileLoadsNothing() {
-        File(tmp.root, "last_queue.json").writeText("{ not json")
+        files.writeText(QueueStore.FILE_NAME, "{ not json")
         assertNull(store().load())
     }
 
@@ -82,6 +78,17 @@ class QueueStoreTest {
     fun offlineFilterOnAllOnlineQueueIsEmpty() {
         val q = SavedQueue(listOf(online(1), online(2)), index = 0, positionMs = 0, shuffle = false, repeatMode = 0)
         assertNull(q.withoutOnlineSongs())
+    }
+
+    @Test
+    fun readsFileWrittenByOlderVersions() {
+        // org.json output from v0.7.0–v0.8.4: escaped slashes, "" for no artwork
+        val old = """{"version":1,"songs":[{"id":42,"title":"Halo","artist":"Beyoncé","album":"I Am","durationMs":261000,"uri":"content:\/\/media\/external\/audio\/media\/42","artworkUri":""}],"index":0,"positionMs":1500,"shuffle":false,"repeatMode":1}"""
+        val loaded = QueueStore.fromJson(old)!!
+        assertEquals("content://media/external/audio/media/42", loaded.songs[0].uri)
+        assertNull(loaded.songs[0].artworkUri)
+        assertEquals(1500L, loaded.positionMs)
+        assertEquals(1, loaded.repeatMode)
     }
 
     @Test

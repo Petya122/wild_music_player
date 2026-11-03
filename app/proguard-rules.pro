@@ -21,3 +21,12 @@
     public <init>(android.content.Context, androidx.work.WorkerParameters);
 }
 -keep class * extends androidx.work.InputMerger { public <init>(); }
+
+# kotlinx.serialization (saved playlists, queue, download index, loudness values)
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+-keepclassmembers class kotlinx.serialization.json.** { *** Companion; }
+-keepclasseswithmembers class kotlinx.serialization.json.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep,includedescriptorclasses class com.wildmusicplayer.**$$serializer { *; }
+-keepclassmembers class com.wildmusicplayer.** { *** Companion; }
+-keepclasseswithmembers class com.wildmusicplayer.** { kotlinx.serialization.KSerializer serializer(...); }

@@ -1,5 +1,7 @@
 package com.wildmusicplayer.service
 
+import com.wildmusicplayer.data.forContext
+import com.wildmusicplayer.data.getInstance
 import android.app.PendingIntent
 import android.content.Intent
 import android.media.AudioDeviceCallback
@@ -128,7 +130,7 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         queueStore = QueueStore.forContext(this)
-        resumeSettings = ResumeSettings(this)
+        resumeSettings = ResumeSettings.forContext(this)
 
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -256,7 +258,7 @@ private class OnlineStreamResolver(
     private val cache = ConcurrentHashMap<String, Pair<String, Long>>()
 
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
-        val webUrl = Song.webUrlOf(dataSpec.uri) ?: return dataSpec
+        val webUrl = Song.webUrlOf(dataSpec.uri.toString()) ?: return dataSpec
 
         val now = SystemClock.elapsedRealtime()
         val cached = cache[webUrl]?.takeIf { now - it.second < CACHE_TTL_MS }?.first

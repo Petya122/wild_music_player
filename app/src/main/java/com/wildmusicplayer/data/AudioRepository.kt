@@ -1,5 +1,6 @@
 package com.wildmusicplayer.data
 
+import com.wildmusicplayer.platform.MusicLibrary
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
@@ -15,7 +16,11 @@ import kotlinx.coroutines.withContext
  * and converting them into Media3 MediaItem representations with rich metadata
  * formatted for Bluetooth AVRCP head units (e.g., 2017 Nissan Qashqai).
  */
-class AudioRepository(private val context: Context) {
+class AudioRepository(private val context: Context) : MusicLibrary {
+
+    override suspend fun loadSongs(filterShortAudio: Boolean, filterRecordings: Boolean): List<Song> =
+        getLocalSongs(filterShortAudio, filterRecordings)
+
 
     suspend fun getLocalSongs(
         filterShortClips: Boolean = true,
@@ -113,8 +118,8 @@ class AudioRepository(private val context: Context) {
                         artist = artist.trim(),
                         album = album.trim(),
                         duration = duration,
-                        contentUri = contentUri,
-                        albumArtUri = albumArtUri,
+                        contentUri = contentUri.toString(),
+                        albumArtUri = albumArtUri?.toString(),
                         folderName = folderName
                     )
                 )
@@ -158,7 +163,7 @@ fun Song.toMediaItem(): MediaItem {
         .setArtist(artist)                    // Line 2 on Nissan Qashqai dot-matrix LCD
         .setAlbumTitle(album)                 // Cycled via 'DISP' button on the radio
         .setDisplayTitle(title)
-        .setArtworkUri(albumArtUri)
+        .setArtworkUri(albumArtUri?.let { android.net.Uri.parse(it) })
         .setIsPlayable(true)
         .build()
 

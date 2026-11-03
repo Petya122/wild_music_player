@@ -1,5 +1,8 @@
 package com.wildmusicplayer.service
 
+import com.wildmusicplayer.platform.PlayerController
+import com.wildmusicplayer.data.forContext
+import com.wildmusicplayer.data.getInstance
 import android.content.ComponentName
 import android.content.Context
 import androidx.core.content.ContextCompat
@@ -25,7 +28,7 @@ import kotlinx.coroutines.launch
  * Manages the client-side Media3 MediaController connection, binding the UI
  * to the background PlaybackService and providing reactive StateFlows for UI state.
  */
-class MusicControllerManager(private val context: Context) {
+class MusicControllerManager(private val context: Context) : PlayerController {
 
     private var mediaController: MediaController? = null
     private val scope = CoroutineScope(Dispatchers.Main + Job())
@@ -38,7 +41,7 @@ class MusicControllerManager(private val context: Context) {
     private var pendingAction: ((MediaController) -> Unit)? = null
 
     private val _currentSong = MutableStateFlow<Song?>(null)
-    val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
+    override val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -139,12 +142,12 @@ class MusicControllerManager(private val context: Context) {
                 artist = mediaItem.mediaMetadata.artist?.toString() ?: "Unknown Artist",
                 album = mediaItem.mediaMetadata.albumTitle?.toString() ?: "Unknown Album",
                 duration = mediaController?.duration?.coerceAtLeast(0L) ?: 0L,
-                contentUri = mediaItem.requestMetadata.mediaUri ?: android.net.Uri.EMPTY,
-                albumArtUri = mediaItem.mediaMetadata.artworkUri
+                contentUri = mediaItem.requestMetadata.mediaUri?.toString() ?: "",
+                albumArtUri = mediaItem.mediaMetadata.artworkUri?.toString()
             )
     }
 
-    fun playSong(song: Song, playlist: List<Song>) {
+    override fun playSong(song: Song, playlist: List<Song>) {
         val startIndex = playlist.indexOfFirst { it.mediaId == song.mediaId }.coerceAtLeast(0)
         playQueue(playlist, startIndex)
     }
@@ -153,7 +156,7 @@ class MusicControllerManager(private val context: Context) {
      * Replaces the queue with [songs] and starts at [startIndex]. The queue may mix local files
      * and online songs ([Song.fromOnline]); online stream URLs are resolved by PlaybackService.
      */
-    fun playQueue(songs: List<Song>, startIndex: Int) {
+    override fun playQueue(songs: List<Song>, startIndex: Int) {
         if (songs.isEmpty()) return
         currentPlaylist = songs
         val mediaItems = songs.map { it.toMediaItem() }
@@ -173,8 +176,8 @@ class MusicControllerManager(private val context: Context) {
             artist = artist,
             album = "YouTube Stream",
             duration = 0L,
-            contentUri = android.net.Uri.parse(streamUrl),
-            albumArtUri = artworkUrl?.let { android.net.Uri.parse(it) }
+            contentUri = streamUrl,
+            albumArtUri = artworkUrl
         )
         _currentSong.value = virtualSong
         playQueue(listOf(virtualSong), 0)
@@ -189,7 +192,7 @@ class MusicControllerManager(private val context: Context) {
         }
     }
 
-    fun skipToNext() {
+    override fun skipToNext() {
         mediaController?.seekToNextMediaItem()
     }
 
@@ -235,7 +238,7 @@ class MusicControllerManager(private val context: Context) {
         progressJob = null
     }
 
-    fun release() {
+    override fun release() {
         pendingAction = null
         stopProgressUpdates()
         mediaController?.release()
@@ -248,7 +251,7 @@ class MusicControllerManager(private val context: Context) {
      * play from the file instead of streaming. The song playing right now is left alone so it
      * isn't interrupted.
      */
-    fun useDownloadedCopies(downloadIndex: DownloadIndex) {
+    override fun useDownloadedCopies(downloadIndex: DownloadIndex) {
         val controller = mediaController ?: return
         val updated = currentPlaylist.toMutableList()
         var changed = false
@@ -259,7 +262,7 @@ class MusicControllerManager(private val context: Context) {
             }
             val localId = Song.webUrlOf(song.contentUri)?.let { downloadIndex.downloadedIdFor(it) }
                 ?: return@forEachIndexed
-            val local = song.copy(id = localId, contentUri = localSongUri(localId))
+            val local = song.copy(id = localId, contentUri = localSongUri(localId).toString())
             controller.replaceMediaItem(index, local.toMediaItem())
             updated[index] = local
             changed = true

@@ -1,6 +1,5 @@
 package com.wildmusicplayer.ui.components
 
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,7 +26,7 @@ import coil.request.ImageRequest
  */
 @Composable
 fun SongThumbnail(
-    albumArtUri: Uri?,
+    albumArtUri: String?,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(8.dp)
 ) {

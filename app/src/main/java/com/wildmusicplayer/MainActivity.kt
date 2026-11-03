@@ -5,6 +5,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import com.wildmusicplayer.ui.LibraryViewModel
+import com.wildmusicplayer.data.getInstance
+import com.wildmusicplayer.data.AppSettings
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.viewmodel.initializer
+import androidx.activity.viewModels
 import android.view.WindowManager
 import java.io.File
 import androidx.activity.ComponentActivity
@@ -109,30 +115,31 @@ import com.wildmusicplayer.ui.theme.WildMusicPlayerTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val PREFS_NAME = "wild_music_player_prefs"
-private const val KEY_THEME_MODE = "theme_mode"
-private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
-private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
-private const val KEY_FILTER_SHORT_AUDIO = "key_filter_short_audio"
-private const val KEY_FILTER_RECORDINGS = "key_filter_recordings"
-
 class MainActivity : ComponentActivity() {
 
-    private lateinit var controllerManager: MusicControllerManager
+    // Survives rotation; owns the connection to the playback service and releases it when cleared
+    private val libraryViewModel: LibraryViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                LibraryViewModel(
+                    library = AudioRepository(applicationContext),
+                    player = MusicControllerManager(applicationContext),
+                    playlists = PlaylistRepository.getInstance(applicationContext),
+                    downloadIndex = DownloadIndex.getInstance(applicationContext),
+                    settings = AppSettings.getInstance(applicationContext)
+                )
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        controllerManager = MusicControllerManager(applicationContext)
-
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val initialTheme = try {
-            ThemeMode.valueOf(prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name)
-        } catch (_: Exception) {
-            ThemeMode.SYSTEM
-        }
+        val controllerManager = libraryViewModel.player as MusicControllerManager
+        val settings = libraryViewModel.settings
 
         setContent {
-            var currentTheme by remember { mutableStateOf(initialTheme) }
+            val themeName by settings.themeMode.collectAsState()
+            val currentTheme = ThemeMode.entries.firstOrNull { it.name == themeName } ?: ThemeMode.SYSTEM
 
             WildMusicPlayerTheme(themeMode = currentTheme) {
                 Surface(
@@ -140,12 +147,10 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     MusicPlayerApp(
+                        library = libraryViewModel,
                         controllerManager = controllerManager,
                         currentTheme = currentTheme,
-                        onThemeChanged = { newTheme ->
-                            currentTheme = newTheme
-                            prefs.edit().putString(KEY_THEME_MODE, newTheme.name).apply()
-                        },
+                        onThemeChanged = { newTheme -> settings.setThemeMode(newTheme.name) },
                         onExitApp = {
                             controllerManager.stopAndShutdown()
                             finishAffinity()
@@ -155,16 +160,12 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        controllerManager.release()
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MusicPlayerApp(
+    library: LibraryViewModel,
     controllerManager: MusicControllerManager,
     currentTheme: ThemeMode,
     onThemeChanged: (ThemeMode) -> Unit,
@@ -172,7 +173,6 @@ fun MusicPlayerApp(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val audioRepository = remember { AudioRepository(context) }
     val downloadManager = remember { YouTubeDownloadManager(context) }
     val updateChecker = remember { UpdateChecker.getInstance(context) }
     val networkPolicyManager = remember { NetworkPolicyManager.getInstance(context) }
@@ -187,25 +187,19 @@ fun MusicPlayerApp(
         }
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
     }
-    var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    val songs by library.songs.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
-    var hasPermission by remember { mutableStateOf(false) }
+    val hasPermission by library.hasPermission.collectAsState()
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsOpen by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var isSplashVisible by remember { mutableStateOf(true) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
 
-    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
-    var keepScreenOn by remember {
-        mutableStateOf(prefs.getBoolean(KEY_KEEP_SCREEN_ON, false))
-    }
-    var filterShortAudio by remember {
-        mutableStateOf(prefs.getBoolean(KEY_FILTER_SHORT_AUDIO, true))
-    }
-    var filterRecordings by remember {
-        mutableStateOf(prefs.getBoolean(KEY_FILTER_RECORDINGS, true))
-    }
+    val settings = library.settings
+    val keepScreenOn by settings.keepScreenOn.collectAsState()
+    val filterShortAudio by settings.filterShortAudio.collectAsState()
+    val filterRecordings by settings.filterRecordings.collectAsState()
 
     val activity = context as? ComponentActivity
     DisposableEffect(keepScreenOn) {
@@ -228,25 +222,15 @@ fun MusicPlayerApp(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        hasPermission = isGranted
-        if (isGranted) {
-            scope.launch {
-                songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
-            }
-        }
+        library.onPermissionResult(isGranted)
     }
 
     LaunchedEffect(filterShortAudio, filterRecordings) {
-        if (hasPermission) {
-            songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
-        }
+        library.reload()
     }
 
     LaunchedEffect(Unit) {
-        val lastSeenVersion = prefs.getString(KEY_LAST_SEEN_VERSION, null)
-        val currentVersion = BuildConfig.VERSION_NAME
-        val isNewVersion = lastSeenVersion != null && lastSeenVersion != currentVersion
-        prefs.edit().putString(KEY_LAST_SEEN_VERSION, currentVersion).apply()
+        val isNewVersion = settings.markVersionSeen(BuildConfig.VERSION_NAME)
 
         // Automatically clean up old update APKs:
         // If a new version just booted, wipe everything (both old versions and the installer APK).
@@ -263,9 +247,8 @@ fun MusicPlayerApp(
             context,
             requiredPermission
         ) == PackageManager.PERMISSION_GRANTED
-        hasPermission = granted
         if (granted) {
-            songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
+            library.onPermissionResult(true)
         } else {
             permissionLauncher.launch(requiredPermission)
         }
@@ -281,81 +264,37 @@ fun MusicPlayerApp(
         }
     }
 
-    val playlistRepository = remember { PlaylistRepository(context) }
-    val downloadIndex = remember { DownloadIndex.getInstance(context) }
-    // The MediaStore ID of the file downloaded from exactly this online track, if any
-    val downloadedIdFor: (OnlineTrack) -> Long? = { track ->
-        downloadIndex.downloadedIdFor(track.webUrl.ifBlank { track.id })
-    }
+    val playlistRepository = library.playlists
     val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
-    val recentlyPlayedIds by playlistRepository.recentlyPlayedIds.collectAsState()
     val customPlaylists by playlistRepository.customPlaylists.collectAsState()
     val completedTrackIds by SongDownloadService.completedTrackIds.collectAsState()
 
-    // Whenever local songs reload, check if any online tracks in playlists can be migrated to local files
+    // Normalization on: whenever the library reloads, measure any songs that are new since the last run
     LaunchedEffect(songs) {
-        if (songs.isNotEmpty()) {
-            playlistRepository.autoMigrateDownloadedTracks(songs, downloadedIdFor)
-            // Normalization on: measure any songs that are new since the last run
-            if (AudioEffectsManager.getInstance(context).isNormalizationEnabled.value) {
-                LoudnessAnalysisWorker.enqueue(context)
-            }
+        if (songs.isNotEmpty() && AudioEffectsManager.getInstance(context).isNormalizationEnabled.value) {
+            LoudnessAnalysisWorker.enqueue(context)
         }
     }
 
-    // Whenever a download finishes in background, refresh local library and migrate playlist tracks
+    // A background download finished: pick up the file and stop streaming queued copies of it
     LaunchedEffect(completedTrackIds) {
-        if (completedTrackIds.isNotEmpty() && hasPermission) {
-            delay(1200) // Allow MediaScanner to finish indexing the newly written file
-            songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
-            playlistRepository.autoMigrateDownloadedTracks(songs, downloadedIdFor)
-            // Queued streams of the songs just downloaded switch to the files
-            controllerManager.useDownloadedCopies(downloadIndex)
-        }
+        if (completedTrackIds.isNotEmpty()) library.onDownloadsCompleted()
     }
 
     var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
 
-    val recentlyPlayedSongs = remember(songs, recentlyPlayedIds) {
-        recentlyPlayedIds.mapNotNull { id -> songs.find { it.id == id } }
-    }
-    val favoriteSongs = remember(songs, favoriteSongIds) {
-        songs.filter { favoriteSongIds.contains(it.id) }
-    }
-
-    // Only real MediaStore songs (id > 0) go into Recently Played and Favorites
-    val addRecentlyPlayed: (Song) -> Unit = { song ->
-        if (song.id > 0) playlistRepository.addRecentlyPlayed(song.id)
-    }
+    val recentlyPlayedSongs by library.recentlyPlayedSongs.collectAsState()
+    val favoriteSongs by library.favoriteSongs.collectAsState()
 
     val toggleFavorite: (Long) -> Unit = { songId ->
-        if (songId > 0) {
-            playlistRepository.toggleFavorite(songId)
-        } else {
+        if (!library.toggleFavorite(songId)) {
             Toast.makeText(context, "Download this track to add it to Favorites", Toast.LENGTH_SHORT).show()
         }
     }
 
-    val playSong: (Song, List<Song>) -> Unit = { song, playlist ->
-        addRecentlyPlayed(song)
-        controllerManager.playSong(song, playlist)
-    }
-
-    val shuffleAll: () -> Unit = {
-        if (songs.isNotEmpty()) {
-            val shuffled = songs.shuffled()
-            addRecentlyPlayed(shuffled.first())
-            controllerManager.playSong(shuffled.first(), shuffled)
-        }
-    }
-
-    val playPlaylist: (List<Song>, Boolean) -> Unit = { list, shuffle ->
-        if (list.isNotEmpty()) {
-            val targetList = if (shuffle) list.shuffled() else list
-            addRecentlyPlayed(targetList.first())
-            controllerManager.playQueue(targetList, 0)
-        }
-    }
+    val playSong: (Song, List<Song>) -> Unit = library::playSong
+    val shuffleAll: () -> Unit = library::shuffleAll
+    val playPlaylist: (List<Song>, Boolean) -> Unit = library::playPlaylist
 
     // ---- Deleting songs from the phone ----
     val songDeleter = remember { SongDeleter(context) }
@@ -364,10 +303,7 @@ fun MusicPlayerApp(
     var songAwaitingSystem by remember { mutableStateOf<Song?>(null) } // waiting on Android's dialog
 
     val afterSongDeleted: (Song) -> Unit = { song ->
-        if (controllerManager.currentSong.value?.id == song.id) controllerManager.skipToNext()
-        playlistRepository.removeSongEverywhere(song.id)
-        downloadIndex.forgetMediaStoreId(song.id)
-        songs = songs.filter { it.id != song.id }
+        library.onSongDeleted(song)
         Toast.makeText(context, "Deleted \"${song.title}\"", Toast.LENGTH_SHORT).show()
     }
 
@@ -568,20 +504,11 @@ fun MusicPlayerApp(
                                 onThemeChanged(newTheme)
                             },
                             keepScreenOn = keepScreenOn,
-                            onKeepScreenOnToggled = { enabled ->
-                                keepScreenOn = enabled
-                                prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
-                            },
+                            onKeepScreenOnToggled = settings::setKeepScreenOn,
                             filterShortAudio = filterShortAudio,
-                            onFilterShortAudioToggled = { enabled ->
-                                filterShortAudio = enabled
-                                prefs.edit().putBoolean(KEY_FILTER_SHORT_AUDIO, enabled).apply()
-                            },
+                            onFilterShortAudioToggled = settings::setFilterShortAudio,
                             filterRecordings = filterRecordings,
-                            onFilterRecordingsToggled = { enabled ->
-                                filterRecordings = enabled
-                                prefs.edit().putBoolean(KEY_FILTER_RECORDINGS, enabled).apply()
-                            },
+                            onFilterRecordingsToggled = settings::setFilterRecordings,
                             onShowWhatsNew = {
                                 showWhatsNewDialog = true
                             },
@@ -600,7 +527,7 @@ fun MusicPlayerApp(
                                 scope.launch {
                                     // Give MediaStore a moment to re-read the rewritten files
                                     delay(1500)
-                                    songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
+                                    library.reload()
                                 }
                             }
                         )
@@ -677,11 +604,7 @@ fun MusicPlayerApp(
                                 downloadManager = downloadManager,
                                 controllerManager = controllerManager,
                                 bottomPadding = contentBottomPadding,
-                                onDownloadComplete = {
-                                    scope.launch {
-                                        songs = audioRepository.getLocalSongs(filterShortAudio, filterRecordings)
-                                    }
-                                },
+                                onDownloadComplete = { library.reload() },
                                 isOfflineOnlyMode = isOfflineOnlyMode,
                                 onSwitchToOnline = { setOfflineMode(false) },
                                 playlistRepository = playlistRepository

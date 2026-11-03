@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // Code shared by the Android app and (from v0.8.7) the iOS app.
@@ -18,8 +19,18 @@ kotlin {
     jvmToolchain(17)
 
     sourceSets {
+        all {
+            languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
+            languageSettings.optIn("kotlin.time.ExperimentalTime")
+        }
+        commonMain.dependencies {
+            api(libs.kotlinx.coroutines.core)
+            api(libs.androidx.lifecycle.viewmodel)
+            implementation(libs.kotlinx.serialization.json)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

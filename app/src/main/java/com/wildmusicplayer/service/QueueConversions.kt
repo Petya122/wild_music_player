@@ -8,16 +8,6 @@ import androidx.media3.common.Player
 import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.model.Song
 
-fun QueuedSong.toSong(): Song = Song(
-    id = id,
-    title = title,
-    artist = artist,
-    album = album,
-    duration = durationMs,
-    contentUri = Uri.parse(uri),
-    albumArtUri = artworkUri?.let { Uri.parse(it) }
-)
-
 private fun MediaItem.toQueuedSong(): QueuedSong? {
     val uri = localConfiguration?.uri ?: return null
     return QueuedSong(
@@ -41,7 +31,7 @@ fun localSongUri(mediaStoreId: Long): Uri =
  */
 fun SavedQueue.preferDownloads(downloadIndex: DownloadIndex): SavedQueue =
     copy(songs = songs.map { song ->
-        val webUrl = if (song.isOnline) Song.webUrlOf(Uri.parse(song.uri)) else null
+        val webUrl = if (song.isOnline) Song.webUrlOf(song.uri) else null
         val localId = webUrl?.let { downloadIndex.downloadedIdFor(it) }
         if (localId == null) song else song.copy(id = localId, uri = localSongUri(localId).toString())
     })

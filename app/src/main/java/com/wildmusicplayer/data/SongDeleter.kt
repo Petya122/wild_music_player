@@ -23,12 +23,12 @@ class SongDeleter(private val context: Context) {
      */
     fun systemDeleteRequest(songs: List<Song>): IntentSender? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        return MediaStore.createDeleteRequest(context.contentResolver, songs.map { it.contentUri }).intentSender
+        return MediaStore.createDeleteRequest(context.contentResolver, songs.map { android.net.Uri.parse(it.contentUri) }).intentSender
     }
 
     /** Android 10 and older: deletes right away (after the app's own confirmation). */
     fun deleteDirectly(song: Song): Result = try {
-        if (context.contentResolver.delete(song.contentUri, null, null) > 0) Result.Deleted else Result.Failed
+        if (context.contentResolver.delete(android.net.Uri.parse(song.contentUri), null, null) > 0) Result.Deleted else Result.Failed
     } catch (e: SecurityException) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is RecoverableSecurityException) {
             Result.NeedsPermission(e.userAction.actionIntent.intentSender)

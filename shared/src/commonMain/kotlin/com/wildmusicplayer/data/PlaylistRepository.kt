@@ -1,14 +1,15 @@
 package com.wildmusicplayer.data
 
-import android.content.Context
-import android.content.SharedPreferences
+import com.wildmusicplayer.platform.KeyValueStore
+import com.wildmusicplayer.service.storageJson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.UUID
-import com.wildmusicplayer.model.Song
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlin.time.Clock
+import kotlin.uuid.Uuid
 
 data class OnlineTrack(
     val id: String,
@@ -20,21 +21,18 @@ data class OnlineTrack(
 )
 
 data class Playlist(
-    val id: String = UUID.randomUUID().toString(),
+    val id: String = Uuid.random().toString(),
     val name: String,
     val songIds: List<Long> = emptyList(),
     val onlineTracks: List<OnlineTrack> = emptyList(),
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = Clock.System.now().toEpochMilliseconds()
 )
 
 /**
  * Manages persistence for Favorites, Recently Played tracks, and Custom User Playlists
- * backed by SharedPreferences with reactive StateFlows.
+ * backed by a [KeyValueStore] (SharedPreferences "wmp_playlists_prefs" on Android) with reactive StateFlows.
  */
-class PlaylistRepository(context: Context) {
-
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("wmp_playlists_prefs", Context.MODE_PRIVATE)
+class PlaylistRepository(private val prefs: KeyValueStore) {
 
     private val _favoriteSongIds = MutableStateFlow<Set<Long>>(emptySet())
     val favoriteSongIds: StateFlow<Set<Long>> = _favoriteSongIds.asStateFlow()
@@ -50,67 +48,19 @@ class PlaylistRepository(context: Context) {
     }
 
     private fun loadData() {
-        // Load Favorites
-        val rawFavs = prefs.getStringSet(KEY_FAVORITES, emptySet()) ?: emptySet()
-        _favoriteSongIds.value = rawFavs.mapNotNull { it.toLongOrNull() }.toSet()
+        _favoriteSongIds.value = prefs.getStringSet(KEY_FAVORITES).orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
 
-        // Load Recently Played
-        val rawRecent = prefs.getString(KEY_RECENTLY_PLAYED, "[]") ?: "[]"
-        try {
-            val jsonArray = JSONArray(rawRecent)
-            val list = mutableListOf<Long>()
-            for (i in 0 until jsonArray.length()) {
-                list.add(jsonArray.getLong(i))
-            }
-            _recentlyPlayedIds.value = list
+        _recentlyPlayedIds.value = try {
+            storageJson.decodeFromString(idListSerializer, prefs.getString(KEY_RECENTLY_PLAYED) ?: "[]")
         } catch (_: Exception) {
-            _recentlyPlayedIds.value = emptyList()
+            emptyList()
         }
 
-        // Load Custom Playlists
-        val rawPlaylists = prefs.getString(KEY_CUSTOM_PLAYLISTS, "[]") ?: "[]"
-        try {
-            val jsonArray = JSONArray(rawPlaylists)
-            val list = mutableListOf<Playlist>()
-            for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                val songIdsArray = obj.optJSONArray("songIds") ?: JSONArray()
-                val songIds = mutableListOf<Long>()
-                for (j in 0 until songIdsArray.length()) {
-                    songIds.add(songIdsArray.getLong(j))
-                }
-
-                val onlineTracksArray = obj.optJSONArray("onlineTracks") ?: JSONArray()
-                val onlineTracks = mutableListOf<OnlineTrack>()
-                for (k in 0 until onlineTracksArray.length()) {
-                    val trackObj = onlineTracksArray.optJSONObject(k)
-                    if (trackObj != null) {
-                        onlineTracks.add(
-                            OnlineTrack(
-                                id = trackObj.getString("id"),
-                                title = trackObj.getString("title"),
-                                artist = trackObj.optString("artist", "Unknown Artist"),
-                                durationSeconds = trackObj.optLong("durationSeconds", 0L),
-                                thumbnailUrl = trackObj.optString("thumbnailUrl").takeIf { it.isNotBlank() },
-                                webUrl = trackObj.optString("webUrl", "")
-                            )
-                        )
-                    }
-                }
-
-                list.add(
-                    Playlist(
-                        id = obj.getString("id"),
-                        name = obj.getString("name"),
-                        songIds = songIds,
-                        onlineTracks = onlineTracks,
-                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-                    )
-                )
-            }
-            _customPlaylists.value = list
+        _customPlaylists.value = try {
+            storageJson.decodeFromString(playlistListSerializer, prefs.getString(KEY_CUSTOM_PLAYLISTS) ?: "[]")
+                .map { it.toPlaylist() }
         } catch (_: Exception) {
-            _customPlaylists.value = emptyList()
+            emptyList()
         }
     }
 
@@ -128,7 +78,7 @@ class PlaylistRepository(context: Context) {
             true
         }
         _favoriteSongIds.value = current
-        prefs.edit().putStringSet(KEY_FAVORITES, current.map { it.toString() }.toSet()).apply()
+        prefs.putStringSet(KEY_FAVORITES, current.map { it.toString() }.toSet())
         return isFav
     }
 
@@ -139,9 +89,7 @@ class PlaylistRepository(context: Context) {
         val trimmed = current.take(20)
         _recentlyPlayedIds.value = trimmed
 
-        val jsonArray = JSONArray()
-        trimmed.forEach { jsonArray.put(it) }
-        prefs.edit().putString(KEY_RECENTLY_PLAYED, jsonArray.toString()).apply()
+        prefs.putString(KEY_RECENTLY_PLAYED, storageJson.encodeToString(idListSerializer, trimmed))
     }
 
     fun removeRecentlyPlayed(songId: Long) {
@@ -149,9 +97,7 @@ class PlaylistRepository(context: Context) {
         current.remove(songId)
         _recentlyPlayedIds.value = current
 
-        val jsonArray = JSONArray()
-        current.forEach { jsonArray.put(it) }
-        prefs.edit().putString(KEY_RECENTLY_PLAYED, jsonArray.toString()).apply()
+        prefs.putString(KEY_RECENTLY_PLAYED, storageJson.encodeToString(idListSerializer, current))
     }
 
     /** A song was deleted from the phone: drop it from favorites, recently played and every playlist. */
@@ -159,7 +105,7 @@ class PlaylistRepository(context: Context) {
         if (songId in _favoriteSongIds.value) {
             val favorites = _favoriteSongIds.value - songId
             _favoriteSongIds.value = favorites
-            prefs.edit().putStringSet(KEY_FAVORITES, favorites.map { it.toString() }.toSet()).apply()
+            prefs.putStringSet(KEY_FAVORITES, favorites.map { it.toString() }.toSet())
         }
         if (songId in _recentlyPlayedIds.value) {
             removeRecentlyPlayed(songId)
@@ -173,7 +119,7 @@ class PlaylistRepository(context: Context) {
 
     fun clearRecentlyPlayed() {
         _recentlyPlayedIds.value = emptyList()
-        prefs.edit().remove(KEY_RECENTLY_PLAYED).apply()
+        prefs.remove(KEY_RECENTLY_PLAYED)
     }
 
     fun createPlaylist(
@@ -269,8 +215,8 @@ class PlaylistRepository(context: Context) {
      * artist (another recording, a remix) never replace the track you picked.
      * Returns the total number of migrated tracks.
      */
-    fun autoMigrateDownloadedTracks(localSongs: List<Song>, downloadedIdFor: (OnlineTrack) -> Long?): Int {
-        if (localSongs.isEmpty()) return 0
+    fun autoMigrateDownloadedTracks(localSongIds: Set<Long>, downloadedIdFor: (OnlineTrack) -> Long?): Int {
+        if (localSongIds.isEmpty()) return 0
         var migratedCount = 0
         var anyChanged = false
 
@@ -282,11 +228,11 @@ class PlaylistRepository(context: Context) {
                 val newSongIds = playlist.songIds.toMutableList()
 
                 for (online in playlist.onlineTracks) {
-                    val match = downloadedIdFor(online)?.let { id -> localSongs.find { it.id == id } }
+                    val matchId = downloadedIdFor(online)?.takeIf { it in localSongIds }
 
-                    if (match != null) {
-                        if (!newSongIds.contains(match.id)) {
-                            newSongIds.add(match.id)
+                    if (matchId != null) {
+                        if (!newSongIds.contains(matchId)) {
+                            newSongIds.add(matchId)
                         }
                         migratedCount++
                         anyChanged = true
@@ -311,38 +257,44 @@ class PlaylistRepository(context: Context) {
     }
 
     private fun savePlaylists(list: List<Playlist>) {
-        val jsonArray = JSONArray()
-        list.forEach { p ->
-            val obj = JSONObject().apply {
-                put("id", p.id)
-                put("name", p.name)
-                put("createdAt", p.createdAt)
-                val songsArr = JSONArray()
-                p.songIds.forEach { songsArr.put(it) }
-                put("songIds", songsArr)
-
-                val onlineArr = JSONArray()
-                p.onlineTracks.forEach { ot ->
-                    val otObj = JSONObject().apply {
-                        put("id", ot.id)
-                        put("title", ot.title)
-                        put("artist", ot.artist)
-                        put("durationSeconds", ot.durationSeconds)
-                        put("thumbnailUrl", ot.thumbnailUrl ?: "")
-                        put("webUrl", ot.webUrl)
-                    }
-                    onlineArr.put(otObj)
-                }
-                put("onlineTracks", onlineArr)
-            }
-            jsonArray.put(obj)
-        }
-        prefs.edit().putString(KEY_CUSTOM_PLAYLISTS, jsonArray.toString()).apply()
+        prefs.putString(KEY_CUSTOM_PLAYLISTS, storageJson.encodeToString(playlistListSerializer, list.map { it.toJson() }))
     }
+
+    // The JSON layout stored since v0.5; a missing thumbnail is stored as ""
+    @Serializable
+    private class PlaylistJson(
+        val id: String,
+        val name: String,
+        val createdAt: Long = 0L,
+        val songIds: List<Long> = emptyList(),
+        val onlineTracks: List<OnlineTrackJson> = emptyList()
+    ) {
+        fun toPlaylist() = Playlist(id, name, songIds, onlineTracks.map { it.toTrack() }, createdAt)
+    }
+
+    @Serializable
+    private class OnlineTrackJson(
+        val id: String,
+        val title: String,
+        val artist: String = "Unknown Artist",
+        val durationSeconds: Long = 0L,
+        val thumbnailUrl: String = "",
+        val webUrl: String = ""
+    ) {
+        fun toTrack() = OnlineTrack(id, title, artist, durationSeconds, thumbnailUrl.takeIf { it.isNotBlank() }, webUrl)
+    }
+
+    private fun Playlist.toJson() = PlaylistJson(
+        id, name, createdAt, songIds,
+        onlineTracks.map { OnlineTrackJson(it.id, it.title, it.artist, it.durationSeconds, it.thumbnailUrl ?: "", it.webUrl) }
+    )
 
     companion object {
         private const val KEY_FAVORITES = "key_favorite_songs"
         private const val KEY_RECENTLY_PLAYED = "key_recently_played_songs"
         private const val KEY_CUSTOM_PLAYLISTS = "key_custom_playlists"
+
+        private val idListSerializer = ListSerializer(Long.serializer())
+        private val playlistListSerializer = ListSerializer(PlaylistJson.serializer())
     }
 }

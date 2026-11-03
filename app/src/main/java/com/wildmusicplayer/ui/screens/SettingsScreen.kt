@@ -1,5 +1,7 @@
 package com.wildmusicplayer.ui.screens
 
+import com.wildmusicplayer.data.forContext
+import com.wildmusicplayer.data.getInstance
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -111,7 +113,7 @@ fun SettingsScreen(
 ) {
     var showTagRepair by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
-    val resumeSettings = remember { ResumeSettings(appContext) }
+    val resumeSettings = remember { ResumeSettings.forContext(appContext) }
     var resumeFromPlayButton by remember { mutableStateOf(resumeSettings.resumeFromPlayButton) }
     var resumeOnBluetooth by remember { mutableStateOf(resumeSettings.resumeOnBluetoothReconnect) }
     val context = LocalContext.current
