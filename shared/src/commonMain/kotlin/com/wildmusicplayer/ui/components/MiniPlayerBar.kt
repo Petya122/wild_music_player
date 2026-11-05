@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,6 +42,8 @@ fun MiniPlayerBar(
     onSkipNext: () -> Unit,
     onSkipPrev: () -> Unit,
     onStop: () -> Unit,
+    // How far into the song (0..1), shown as a thin line along the bottom edge
+    progress: Float = 0f,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -131,5 +136,13 @@ fun MiniPlayerBar(
                 )
             }
         }
+        LinearProgressIndicator(
+            progress = { progress.coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(2.dp),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = Color.Transparent,
+            gapSize = 0.dp,
+            drawStopIndicator = {}
+        )
     }
 }

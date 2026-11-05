@@ -32,6 +32,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import com.wildmusicplayer.widget.PlayerWidget
 import com.wildmusicplayer.ui.theme.AccentColor
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -338,6 +339,7 @@ fun MusicPlayerApp(
 
     val playlistRepository = library.playlists
     val exportPlaylist = rememberPlaylistExporter(songs)
+    val playCounts by playlistRepository.playCounts.collectAsState()
     val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
     val customPlaylists by playlistRepository.customPlaylists.collectAsState()
     val completedTrackIds by SongDownloadService.completedTrackIds.collectAsState()
@@ -574,7 +576,10 @@ fun MusicPlayerApp(
                         SettingsScreen(
                             currentTheme = currentTheme,
                             currentAccent = currentAccent,
-                            onAccentSelected = { library.settings.setAccentColor(it.name) },
+                            onAccentSelected = {
+                                library.settings.setAccentColor(it.name)
+                                PlayerWidget.renderAll(context)
+                            },
                             onThemeSelected = { newTheme ->
                                 onThemeChanged(newTheme)
                             },
@@ -676,6 +681,7 @@ fun MusicPlayerApp(
                                 onRemoveSongFromPlaylist = { playlistId, songId -> playlistRepository.removeSongFromPlaylist(playlistId, songId) },
                                 onExportPlaylist = exportPlaylist,
                                 onRenamePlaylist = playlistRepository::renamePlaylist,
+                                playCounts = playCounts,
                                 onRestoreSongToPlaylist = playlistRepository::insertSongInPlaylist,
                                 onRestoreOnlineTrack = playlistRepository::insertOnlineTrackInPlaylist,
                                 onReorderPlaylist = playlistRepository::reorderPlaylist

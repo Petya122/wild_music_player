@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.filled.LibraryAdd
+import androidx.compose.material.icons.filled.Whatshot
 import com.wildmusicplayer.ui.LocalShowUndo
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import sh.calvin.reorderable.ReorderableItem
@@ -114,6 +116,8 @@ enum class PlaylistDetailFilter(val label: String) {
 sealed class PlaylistSelection {
     data object None : PlaylistSelection()
     data object Favorites : PlaylistSelection()
+    data object MostPlayed : PlaylistSelection()
+    data object RecentlyAdded : PlaylistSelection()
     data class Folder(val folderName: String, val songs: List<Song>) : PlaylistSelection()
     data class Custom(val playlist: Playlist) : PlaylistSelection()
 }
@@ -142,8 +146,19 @@ fun PlaylistsScreen(
     // Undo for the removals above: put the song / track back at its old place
     onRestoreSongToPlaylist: ((playlistId: String, songId: Long, index: Int) -> Unit)? = null,
     onRestoreOnlineTrack: ((playlistId: String, track: OnlineTrack, index: Int) -> Unit)? = null,
-    onReorderPlaylist: ((playlistId: String, songIds: List<Long>, onlineTrackIds: List<String>) -> Unit)? = null
+    onReorderPlaylist: ((playlistId: String, songIds: List<Long>, onlineTrackIds: List<String>) -> Unit)? = null,
+    // How often each song was played, for the automatic "Most Played" playlist
+    playCounts: Map<Long, Int> = emptyMap()
 ) {
+    val mostPlayedSongs = remember(allSongs, playCounts) {
+        allSongs.filter { (playCounts[it.id] ?: 0) > 0 }
+            .sortedByDescending { playCounts[it.id] ?: 0 }
+            .take(AUTO_PLAYLIST_SIZE)
+    }
+    // MediaStore numbers files in the order they were added, so the highest IDs are the newest
+    val recentlyAddedSongs = remember(allSongs) {
+        allSongs.sortedByDescending { it.id }.take(AUTO_PLAYLIST_SIZE)
+    }
     var selectedPlaylist by remember { mutableStateOf<PlaylistSelection>(PlaylistSelection.None) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var createMode by remember { mutableIntStateOf(0) } // 0 = From Folder, 1 = Custom Name
@@ -293,6 +308,28 @@ fun PlaylistsScreen(
                             onClick = { selectedPlaylist = PlaylistSelection.Favorites }
                         )
                     }
+                    if (mostPlayedSongs.isNotEmpty()) {
+                        item {
+                            PlaylistCard(
+                                title = "Most Played",
+                                subtitle = "Your top ${mostPlayedSongs.size} ${if (mostPlayedSongs.size == 1) "song" else "songs"}",
+                                icon = Icons.Default.Whatshot,
+                                iconTint = MaterialTheme.colorScheme.primary,
+                                onClick = { selectedPlaylist = PlaylistSelection.MostPlayed }
+                            )
+                        }
+                    }
+                    if (recentlyAddedSongs.isNotEmpty()) {
+                        item {
+                            PlaylistCard(
+                                title = "Recently Added",
+                                subtitle = "The newest ${recentlyAddedSongs.size} ${if (recentlyAddedSongs.size == 1) "song" else "songs"} on your phone",
+                                icon = Icons.Default.LibraryAdd,
+                                iconTint = MaterialTheme.colorScheme.primary,
+                                onClick = { selectedPlaylist = PlaylistSelection.RecentlyAdded }
+                            )
+                        }
+                    }
                 }
 
                 // Device Music Folders Section (Hidden if Hybrid filter is active)
@@ -430,6 +467,42 @@ fun PlaylistsScreen(
                 onSongClick = { song -> onSongClick(song, favoriteSongs) },
                 onPlayAll = { onPlayPlaylist(favoriteSongs, false) },
                 onShuffleAll = { onPlayPlaylist(favoriteSongs, true) },
+                onToggleFavorite = onToggleFavorite,
+                onDeleteSong = onDeleteSong,
+                onAddToPlaylist = onAddToPlaylist
+            )
+        }
+
+        is PlaylistSelection.MostPlayed -> {
+            PlaylistDetailView(
+                title = "Most Played 🔥",
+                subtitle = "${mostPlayedSongs.size} tracks • most played first",
+                songs = mostPlayedSongs,
+                favoriteSongIds = favoriteSongIds,
+                currentPlayingSongId = currentPlayingSongId,
+                bottomPadding = bottomPadding,
+                onBack = { selectedPlaylist = PlaylistSelection.None },
+                onSongClick = { song -> onSongClick(song, mostPlayedSongs) },
+                onPlayAll = { onPlayPlaylist(mostPlayedSongs, false) },
+                onShuffleAll = { onPlayPlaylist(mostPlayedSongs, true) },
+                onToggleFavorite = onToggleFavorite,
+                onDeleteSong = onDeleteSong,
+                onAddToPlaylist = onAddToPlaylist
+            )
+        }
+
+        is PlaylistSelection.RecentlyAdded -> {
+            PlaylistDetailView(
+                title = "Recently Added 🆕",
+                subtitle = "${recentlyAddedSongs.size} tracks • newest first",
+                songs = recentlyAddedSongs,
+                favoriteSongIds = favoriteSongIds,
+                currentPlayingSongId = currentPlayingSongId,
+                bottomPadding = bottomPadding,
+                onBack = { selectedPlaylist = PlaylistSelection.None },
+                onSongClick = { song -> onSongClick(song, recentlyAddedSongs) },
+                onPlayAll = { onPlayPlaylist(recentlyAddedSongs, false) },
+                onShuffleAll = { onPlayPlaylist(recentlyAddedSongs, true) },
                 onToggleFavorite = onToggleFavorite,
                 onDeleteSong = onDeleteSong,
                 onAddToPlaylist = onAddToPlaylist
@@ -1204,6 +1277,9 @@ private fun PlaylistDetailView(
         }
     }
 }
+
+// How many songs the automatic playlists (Most Played, Recently Added) hold
+private const val AUTO_PLAYLIST_SIZE = 50
 
 // Online track keys in the playlist list, apart from song IDs (numbers) and section headers
 private const val ONLINE_KEY = "online:"

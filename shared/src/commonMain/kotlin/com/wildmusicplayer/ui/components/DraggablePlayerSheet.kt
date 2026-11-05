@@ -247,7 +247,8 @@ fun DraggablePlayerSheet(
                             onTogglePlay = onTogglePlay,
                             onSkipNext = onSkipNext,
                             onSkipPrev = onSkipPrevious,
-                            onStop = onStop
+                            onStop = onStop,
+                            progress = if (duration > 0) currentPosition.toFloat() / duration else 0f
                         )
                     }
                 }

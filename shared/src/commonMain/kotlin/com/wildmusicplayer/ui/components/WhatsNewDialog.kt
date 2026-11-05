@@ -38,6 +38,15 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.2", listOf(
+            ChangelogEntry("🏠", "Home-Screen Widget", "Long-press your home screen → Widgets → Wild Music Player. Cover, song, and previous / play-pause / next, in your accent color. Stretch it taller for a big cover. Play works even when the app is closed."),
+            ChangelogEntry("🔥", "Most Played & Recently Added", "Two automatic playlists in the Playlists tab. A song counts as played after 30 seconds (counting starts with this version, also with the app closed)."),
+            ChangelogEntry("📏", "Progress on the Mini Player", "A thin line along the bottom of the mini player shows how far into the song you are."),
+            ChangelogEntry("🎚️", "Clearer Equalizer", "Each band now fills from the middle (0 dB) up or down, so the curve is easy to read."),
+            ChangelogEntry("🔤", "Songs Sorting Fix", "\"Recently Added\" in Songs really shows the newest songs first now.")
+        )
+    ),
+    ReleaseNotes(
         "0.9.1", listOf(
             ChangelogEntry("👆", "Swipe to Change Songs", "Swipe the cover in Now Playing, or the mini player, left for the next song and right for the previous one."),
             ChangelogEntry("🎨", "Themes", "Settings → Appearance: pick an accent color (Blue, Purple, Green, Teal, Orange, Red, Pink, or your wallpaper's colors on Android 12+), and the new Black (AMOLED) mode. Every combination works. Cards and buttons now follow the color you pick instead of a stray lilac."),

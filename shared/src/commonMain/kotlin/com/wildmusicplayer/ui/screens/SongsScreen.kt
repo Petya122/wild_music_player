@@ -78,7 +78,8 @@ fun SongsScreen(
             SongSortOrder.TITLE -> songs.sortedBy { it.title.lowercase() }
             SongSortOrder.ARTIST -> songs.sortedBy { it.artist.lowercase() }
             SongSortOrder.DURATION -> songs.sortedByDescending { it.duration }
-            SongSortOrder.DEFAULT -> songs
+            // MediaStore IDs grow as files are added: highest first = newest first
+            SongSortOrder.DEFAULT -> songs.sortedByDescending { it.id }
         }
     }
 

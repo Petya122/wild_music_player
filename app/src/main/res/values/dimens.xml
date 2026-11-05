@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Space around the music note in the widget when the song has no cover -->
+    <dimen name="widget_placeholder_padding">10dp</dimen>
+</resources>

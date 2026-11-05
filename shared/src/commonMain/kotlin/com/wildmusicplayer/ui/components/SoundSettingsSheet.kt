@@ -2,6 +2,10 @@ package com.wildmusicplayer.ui.components
 
 import kotlin.math.abs
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -300,6 +304,7 @@ fun SoundSettingsSheet(
 }
 
 /** On/off, the phone's presets as chips, and a slider per band (which turns the curve into "Custom"). */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EqualizerSection(equalizer: EqualizerState?, effects: AudioEffects) {
     Row(
@@ -362,7 +367,8 @@ private fun EqualizerSection(equalizer: EqualizerState?, effects: AudioEffects) 
                 value = level.toFloat(),
                 onValueChange = { effects.setEqualizerBandLevel(band, it.roundToInt()) },
                 valueRange = equalizer.minLevelMb.toFloat()..equalizer.maxLevelMb.toFloat(),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                track = { CenteredTrack(level.toFloat(), equalizer.minLevelMb.toFloat()..equalizer.maxLevelMb.toFloat()) }
             )
             Text(
                 text = formatDb(level),
@@ -372,6 +378,33 @@ private fun EqualizerSection(equalizer: EqualizerState?, effects: AudioEffects) 
                 modifier = Modifier.width(52.dp)
             )
         }
+    }
+}
+
+/** A band's track, filled from 0 dB (the middle, marked with a tick) up or down to its level. */
+@Composable
+private fun CenteredTrack(value: Float, range: ClosedFloatingPointRange<Float>) {
+    val active = MaterialTheme.colorScheme.primary
+    val inactive = MaterialTheme.colorScheme.surfaceVariant
+    Canvas(modifier = Modifier.fillMaxWidth().height(6.dp)) {
+        val span = (range.endInclusive - range.start).takeIf { it > 0f } ?: 1f
+        fun xOf(v: Float) = size.width * ((v.coerceIn(range.start, range.endInclusive) - range.start) / span)
+        val corner = CornerRadius(size.height / 2)
+        drawRoundRect(color = inactive, cornerRadius = corner)
+        val zero = xOf(0f)
+        val at = xOf(value)
+        drawRoundRect(
+            color = active,
+            topLeft = Offset(minOf(zero, at), 0f),
+            size = Size(abs(at - zero), size.height),
+            cornerRadius = corner
+        )
+        val tick = 2.dp.toPx()
+        drawRect(
+            color = active.copy(alpha = 0.6f),
+            topLeft = Offset(zero - tick / 2, -tick),
+            size = Size(tick, size.height + tick * 2)
+        )
     }
 }
 

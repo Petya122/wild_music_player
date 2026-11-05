@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home-screen widget (PlayerWidget): light theme; values-night has the dark one -->
+    <color name="widget_background">#F2F8FAFC</color>
+    <color name="widget_title">#0F172A</color>
+    <color name="widget_subtitle">#475569</color>
+    <color name="widget_icon">#0F172A</color>
+    <color name="widget_cover_placeholder">#E2E8F0</color>
+    <string name="widget_description">Now playing, with play/pause and skip buttons</string>
+    <string name="widget_nothing_playing">Nothing playing</string>
+    <string name="widget_tap_to_open">Tap to open Wild Music Player</string>
+</resources>

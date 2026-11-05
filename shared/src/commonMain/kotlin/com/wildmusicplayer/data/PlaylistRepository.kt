@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -43,6 +44,10 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
     private val _customPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
     val customPlaylists: StateFlow<List<Playlist>> = _customPlaylists.asStateFlow()
 
+    private val _playCounts = MutableStateFlow<Map<Long, Int>>(emptyMap())
+    /** How many times each song was played (counted since v0.9.2), for "Most Played". */
+    val playCounts: StateFlow<Map<Long, Int>> = _playCounts.asStateFlow()
+
     init {
         loadData()
     }
@@ -62,6 +67,19 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         } catch (_: Exception) {
             emptyList()
         }
+
+        _playCounts.value = try {
+            storageJson.decodeFromString(playCountSerializer, prefs.getString(KEY_PLAY_COUNTS) ?: "{}")
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    /** A song has been listened to (PlaybackService decides when that is). */
+    fun countPlay(songId: Long) {
+        val counts = _playCounts.value + (songId to (_playCounts.value[songId] ?: 0) + 1)
+        _playCounts.value = counts
+        prefs.putString(KEY_PLAY_COUNTS, storageJson.encodeToString(playCountSerializer, counts))
     }
 
     fun isFavorite(songId: Long): Boolean {
@@ -109,6 +127,11 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         }
         if (songId in _recentlyPlayedIds.value) {
             removeRecentlyPlayed(songId)
+        }
+        if (songId in _playCounts.value) {
+            val counts = _playCounts.value - songId
+            _playCounts.value = counts
+            prefs.putString(KEY_PLAY_COUNTS, storageJson.encodeToString(playCountSerializer, counts))
         }
         if (_customPlaylists.value.any { songId in it.songIds }) {
             val updated = _customPlaylists.value.map { it.copy(songIds = it.songIds - songId) }
@@ -373,8 +396,10 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         private const val KEY_FAVORITES = "key_favorite_songs"
         private const val KEY_RECENTLY_PLAYED = "key_recently_played_songs"
         private const val KEY_CUSTOM_PLAYLISTS = "key_custom_playlists"
+        private const val KEY_PLAY_COUNTS = "key_play_counts"
 
         private val idListSerializer = ListSerializer(Long.serializer())
         private val playlistListSerializer = ListSerializer(PlaylistJson.serializer())
+        private val playCountSerializer = MapSerializer(Long.serializer(), Int.serializer())
     }
 }

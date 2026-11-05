@@ -39,6 +39,7 @@ import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.wildmusicplayer.MainActivity
+import com.wildmusicplayer.widget.PlayerWidget
 import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.data.LoudnessStore
 import com.wildmusicplayer.data.NetworkPolicyManager
@@ -72,9 +73,13 @@ class PlaybackService : MediaSessionService() {
     // When playback paused because Bluetooth / headphones disconnected (0 = it didn't)
     private var pausedByDisconnectAt = 0L
 
+    // The song waiting to count as played (null = already counted, or nothing playing)
+    private var playCountCandidate: Long? = null
+
     private val periodicSave = object : Runnable {
         override fun run() {
             saveQueue()
+            checkPlayCount()
             mainHandler.postDelayed(this, SAVE_INTERVAL_MS)
         }
     }
@@ -84,11 +89,14 @@ class PlaybackService : MediaSessionService() {
             saveQueue()
             applyTrackLoudness(mediaItem)
             updateFavoriteButton()
+            updateWidget()
+            playCountCandidate = currentSongId()
         }
 
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
             if (reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
             if (timeline.isEmpty) {
+                updateWidget()
                 // The queue was cleared on purpose (Stop): forget it, after any save still pending
                 if (!saveExecutor.isShutdown) saveExecutor.execute { queueStore.clear() }
             } else {
@@ -102,6 +110,7 @@ class PlaybackService : MediaSessionService() {
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             saveQueue()
+            updateWidget()
             mainHandler.removeCallbacks(periodicSave)
             if (isPlaying) mainHandler.postDelayed(periodicSave, SAVE_INTERVAL_MS)
         }
@@ -184,6 +193,7 @@ class PlaybackService : MediaSessionService() {
 
         player.addListener(playerListener)
 
+        running = this
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivityPendingIntent)
             .setCallback(SessionCallback())
@@ -207,6 +217,8 @@ class PlaybackService : MediaSessionService() {
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
         SleepTimerManager.detach()
         serviceScope.cancel()
+        PlayerWidget.markPaused(this)
+        running = null
         com.wildmusicplayer.data.AudioEffectsManager.getInstance(this).release()
         mediaSession?.run {
             player.removeListener(playerListener)
@@ -240,6 +252,34 @@ class PlaybackService : MediaSessionService() {
             player.repeatMode = if (repeatMode == Player.REPEAT_MODE_OFF) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
             mainHandler.postDelayed({ player.repeatMode = repeatMode }, CAR_NUDGE_GAP_MS)
         }, CAR_REFRESH_DELAY_MS)
+    }
+
+    /**
+     * A song counts as played for "Most Played" after 30 seconds, or half of a shorter song. Checked with
+     * the regular queue save (every 10 s while playing), so it also counts with the app closed.
+     */
+    private fun checkPlayCount() {
+        val player = mediaSession?.player ?: return
+        val songId = currentSongId() ?: return
+        if (songId != playCountCandidate) return
+        val needed = player.duration.takeIf { it > 0 }?.let { minOf(PLAY_COUNT_AFTER_MS, it / 2) } ?: PLAY_COUNT_AFTER_MS
+        if (player.currentPosition >= needed) {
+            playlists.countPlay(songId)
+            playCountCandidate = null
+        }
+    }
+
+    /** Tells the home-screen widget what's playing now (or that nothing is). */
+    private fun updateWidget() {
+        val player = mediaSession?.player ?: return
+        val metadata = player.currentMediaItem?.mediaMetadata
+        PlayerWidget.update(
+            context = this,
+            title = metadata?.title?.toString(),
+            artist = metadata?.artist?.toString(),
+            artworkUri = metadata?.artworkUri?.toString(),
+            isPlaying = player.isPlaying
+        )
     }
 
     // Only songs on the phone can be favorites (online streams have no MediaStore ID)
@@ -331,7 +371,17 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+        // The running service, for the widget's previous / next buttons (same process, main thread)
+        @Volatile private var running: PlaybackService? = null
+
+        /** Skips in the playing queue; does nothing when the player isn't running (nothing to skip). */
+        fun skip(next: Boolean) {
+            val player = running?.mediaSession?.player ?: return
+            if (next) player.seekToNext() else player.seekToPrevious()
+        }
+
         private const val SAVE_INTERVAL_MS = 10_000L
+        private const val PLAY_COUNT_AFTER_MS = 30_000L
         private const val RECONNECT_WINDOW_MS = 2 * 60 * 60 * 1000L
         private const val RECONNECT_PLAY_DELAY_MS = 1_500L
         // Long enough for the car's control link to come up after the audio one

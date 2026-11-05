@@ -90,4 +90,17 @@ class PlaylistRepositoryTest {
         assertEquals(listOf(3L, 1L, 2L), restored.songIds)
         assertEquals(listOf(b, a), restored.onlineTracks)
     }
+
+    @Test
+    fun playCountsAreSavedAndForgottenWithTheSong() {
+        val prefs = FakeKeyValueStore()
+        val repo = PlaylistRepository(prefs)
+        repo.countPlay(5)
+        repo.countPlay(5)
+        repo.countPlay(8)
+        assertEquals(mapOf(5L to 2, 8L to 1), PlaylistRepository(prefs).playCounts.value)
+
+        repo.removeSongEverywhere(5)
+        assertEquals(mapOf(8L to 1), PlaylistRepository(prefs).playCounts.value)
+    }
 }

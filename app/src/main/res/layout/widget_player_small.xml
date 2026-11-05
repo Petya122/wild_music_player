@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 4x1 widget: cover, title and artist, previous / play-pause / next -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="10dp"
+    android:paddingEnd="6dp">
+
+    <ImageView
+        android:id="@+id/widget_cover"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="@drawable/widget_cover_background"
+        android:clipToOutline="true"
+        android:contentDescription="@string/widget_tap_to_open"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_widget_music" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="10dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="@string/widget_nothing_playing"
+            android:textColor="@color/widget_title"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_artist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/widget_subtitle"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/widget_previous"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:contentDescription="Previous"
+        android:padding="6dp"
+        android:src="@drawable/ic_widget_previous" />
+
+    <ImageView
+        android:id="@+id/widget_play"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/widget_play_background"
+        android:contentDescription="Play or pause"
+        android:padding="8dp"
+        android:src="@drawable/ic_widget_play" />
+
+    <ImageView
+        android:id="@+id/widget_next"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:contentDescription="Next"
+        android:padding="6dp"
+        android:src="@drawable/ic_widget_next" />
+</LinearLayout>
