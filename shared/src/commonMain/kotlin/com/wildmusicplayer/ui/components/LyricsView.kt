@@ -4,6 +4,9 @@ import com.wildmusicplayer.lyrics.LyricsSource
 import androidx.compose.foundation.clickable
 import com.wildmusicplayer.ui.LocalShowMessage
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ColumnScope
@@ -212,22 +215,37 @@ private fun ColumnScope.LyricLines(
     }
 }
 
-/** "- 0.5 s   Timing +1.5 s · reset   + 0.5 s", with a hint about long-pressing a line. */
+/** "[−0.5 s]   +1.5 s · Reset   [+0.5 s]", with a hint about long-pressing a line. */
 @Composable
 private fun TimingBar(offsetMs: Long, onTimingChange: (Long) -> Unit) {
+    // The two step buttons keep their size; the middle takes what's left and never wraps
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        TextButton(onClick = { onTimingChange(offsetMs - TIMING_STEP_MS) }) { Text("\u2212 0.5 s") }
-        TextButton(onClick = { onTimingChange(0L) }, enabled = offsetMs != 0L) {
-            Text(
-                text = if (offsetMs == 0L) "Timing: as found" else "Timing ${formatOffset(offsetMs)} \u00b7 reset",
-                style = MaterialTheme.typography.labelMedium
-            )
+        TimingStepButton("−0.5 s") { onTimingChange(offsetMs - TIMING_STEP_MS) }
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            if (offsetMs == 0L) {
+                Text(
+                    text = "Timing as found",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                TextButton(onClick = { onTimingChange(0L) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text(
+                        text = "${formatOffset(offsetMs)} · Reset",
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
-        TextButton(onClick = { onTimingChange(offsetMs + TIMING_STEP_MS) }) { Text("+ 0.5 s") }
+        TimingStepButton("+0.5 s") { onTimingChange(offsetMs + TIMING_STEP_MS) }
     }
     Text(
         text = "Long-press a line when you hear it start to line them all up",
@@ -236,6 +254,17 @@ private fun TimingBar(offsetMs: Long, onTimingChange: (Long) -> Unit) {
         textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
     )
+}
+
+@Composable
+private fun TimingStepButton(label: String, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        modifier = Modifier.height(36.dp)
+    ) {
+        Text(text = label, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+    }
 }
 
 private const val TIMING_STEP_MS = 500L

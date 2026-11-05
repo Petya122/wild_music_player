@@ -3,6 +3,8 @@
     <string name="tile_label">Wild Music</string>
     <string name="tile_paused">Paused</string>
     <string name="tile_tap_to_play">Tap to play</string>
+    <string name="tile_starting">Starting…</string>
+    <string name="tile_nothing_to_play">Nothing to play yet: open Wild Music to add songs</string>
     <string name="shortcut_shuffle_all">Shuffle all</string>
     <string name="shortcut_favorites">Favorites</string>
 </resources>

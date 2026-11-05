@@ -14,4 +14,6 @@
     <string name="playlist_widget_description">Plays a playlist of your choice in one tap</string>
     <string name="playlist_widget_tap_to_play">Tap to play</string>
     <string name="playlist_widget_tap_to_shuffle">Tap to shuffle</string>
+    <string name="playlist_widget_shuffle_change">Shuffle · tap to change</string>
+    <string name="playlist_widget_in_order_change">In order · tap to change</string>
 </resources>

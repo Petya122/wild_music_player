@@ -49,9 +49,22 @@ class NetworkPolicyManager private constructor(private val context: Context) {
     /** Observable Offline Only Mode, shared by every screen. */
     val offlineOnlyMode: StateFlow<Boolean> = _offlineOnlyMode.asStateFlow()
 
+    init {
+        if (_offlineOnlyMode.value) DownloadQueue.pause(DownloadPause.OFFLINE)
+    }
+
+    /**
+     * Offline Mode cuts the network right away: downloads pause (and continue when going online again),
+     * and PlaybackService drops online songs from the queue (it watches [offlineOnlyMode]).
+     */
     var isOfflineOnlyMode: Boolean
         get() = _offlineOnlyMode.value
         set(value) {
+            if (value) {
+                DownloadQueue.pause(DownloadPause.OFFLINE)
+            } else if (DownloadQueue.resume(DownloadPause.OFFLINE)) {
+                com.wildmusicplayer.service.SongDownloadService.startIfNeeded(context)
+            }
             _offlineOnlyMode.value = value
             prefs.edit().putBoolean(KEY_OFFLINE_ONLY_MODE, value).apply()
         }

@@ -38,6 +38,17 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.6", listOf(
+            ChangelogEntry("⚡", "Quick Settings Tile Fixed", "With the app closed or paused, the tile now really starts the music: your last queue, or everything shuffled when there's none. It lights up only once music plays. In 0.9.5 it could light up and stay silent, or end in \"Wild Music isn't responding\"."),
+            ChangelogEntry("▶️", "Playlist Widget: Choose, Then Play", "Tap the playlist's name to pick another one, tap ▶ to play it. With the app fully closed the playlist now stays in the queue (before, the app could open with the old queue instead)."),
+            ChangelogEntry("🔁", "Repeat on the Player Widget", "The big player widget got a repeat button next to the heart: off, all, then this song, like the app's own button."),
+            ChangelogEntry("☁️", "Offline Means Offline", "Switching to Offline now stops an online song right away (the next song on your phone plays) and pauses downloads. Going Online again continues them."),
+            ChangelogEntry("⬇️", "Download Queue", "While songs download, a download button with a count shows in the top bar: progress, waiting songs, cancel and retry. Also in Settings → Downloads & Network. Every download now goes through this one queue."),
+            ChangelogEntry("⚙️", "Tidier Settings", "Settings is a short list now (Appearance, Playback & Sound, Car & Bluetooth, Library & Lyrics, Downloads & Network, Backup & Restore, Updates & Storage); each opens its own page."),
+            ChangelogEntry("🎤", "Steadier Lyrics Timing Bar", "The −0.5 s / +0.5 s buttons keep their size and the timing text stays on one line, even at +10 s.")
+        )
+    ),
+    ReleaseNotes(
         "0.9.5", listOf(
             ChangelogEntry("🚗", "Car Sound Profile", "Each Bluetooth device keeps its own volume, dB boost, normalization, equalizer and crossfade. Set the sound up once in the car; your headphones and the phone keep theirs. The Sound sheet shows whose settings you're changing. Off in Settings → Car & Bluetooth."),
             ChangelogEntry("🔀", "Shuffle & Repeat in the Notification", "The notification and lock screen player got shuffle and repeat buttons. Android fits two there, so the heart now lives in the app and on the widget (it still shows at the end of the queue)."),

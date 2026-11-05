@@ -65,7 +65,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -115,7 +114,6 @@ fun DownloaderScreen(
     downloadManager: YouTubeDownloadManager,
     controllerManager: MusicControllerManager,
     bottomPadding: Dp,
-    onDownloadComplete: () -> Unit,
     isOfflineOnlyMode: Boolean = false,
     onSwitchToOnline: () -> Unit = {},
     playlistRepository: PlaylistRepository? = null,
@@ -134,9 +132,6 @@ fun DownloaderScreen(
 
     var searchHistory by remember { mutableStateOf(downloadManager.getSearchHistory()) }
 
-    // Track download state: trackId -> progress (0.0 to 1.0)
-    val activeDownloads = remember { mutableStateMapOf<String, Float>() }
-    val completedDownloads = remember { mutableStateMapOf<String, Boolean>() }
 
     val serviceActiveDownloads by SongDownloadService.activeDownloads.collectAsState()
     val serviceCompletedTracks by SongDownloadService.completedTrackIds.collectAsState()
@@ -231,37 +226,11 @@ fun DownloaderScreen(
         }
     }
 
+    // Every download goes into the one queue (the Downloads sheet shows it). With "Background Downloading"
+    // off, the queue pauses while the app isn't on screen (MainActivity)
     val performDownload: (YouTubeTrack) -> Unit = { track ->
-        if (networkPolicyManager.backgroundDownloads) {
-            SongDownloadService.startDownload(context, track)
-            Toast.makeText(context, "Downloading in background: ${track.title}", Toast.LENGTH_SHORT).show()
-        } else {
-            val progress = activeDownloads[track.id]
-            if (progress == null) {
-                activeDownloads[track.id] = 0f
-                scope.launch {
-                    val result = downloadManager.downloadTrack(track) { p ->
-                        activeDownloads[track.id] = p
-                    }
-                    activeDownloads.remove(track.id)
-                    if (result.isSuccess) {
-                        completedDownloads[track.id] = true
-                        Toast.makeText(
-                            context,
-                            "Downloaded: ${track.title}",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        onDownloadComplete()
-                    } else {
-                        Toast.makeText(
-                            context,
-                            "Download failed: ${result.exceptionOrNull()?.message}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            }
-        }
+        SongDownloadService.startDownload(context, track)
+        Toast.makeText(context, "Added to downloads: ${track.title}", Toast.LENGTH_SHORT).show()
     }
 
     val triggerDownload: (YouTubeTrack) -> Unit = { track ->
@@ -659,8 +628,8 @@ fun DownloaderScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(sortedResults, key = { it.id }) { track ->
-                    val progress = activeDownloads[track.id] ?: serviceActiveDownloads[track.id]
-                    val isDownloaded = completedDownloads[track.id] == true || serviceCompletedTracks.contains(track.id)
+                    val progress = serviceActiveDownloads[track.id]
+                    val isDownloaded = serviceCompletedTracks.contains(track.id)
 
                     YouTubeTrackItem(
                         track = track,
@@ -680,8 +649,8 @@ fun DownloaderScreen(
 
     // Track Action Dialog when song card is clicked
     selectedTrackForAction?.let { track ->
-        val progress = activeDownloads[track.id] ?: serviceActiveDownloads[track.id]
-        val isDownloaded = completedDownloads[track.id] == true || serviceCompletedTracks.contains(track.id)
+        val progress = serviceActiveDownloads[track.id]
+        val isDownloaded = serviceCompletedTracks.contains(track.id)
 
         TrackActionDialog(
             track = track,

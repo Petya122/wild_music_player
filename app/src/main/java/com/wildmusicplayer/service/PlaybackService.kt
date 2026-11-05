@@ -1,5 +1,9 @@
 package com.wildmusicplayer.service
 
+import androidx.core.content.ContextCompat
+import android.widget.Toast
+import android.view.KeyEvent
+import android.content.Context
 import kotlinx.coroutines.withContext
 import com.wildmusicplayer.data.AudioRepository
 import com.wildmusicplayer.data.AppSettings
@@ -14,6 +18,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.SupervisorJob
@@ -137,6 +142,7 @@ class PlaybackService : MediaSessionService() {
         override fun onRepeatModeChanged(repeatMode: Int) {
             saveQueue()
             updateNotificationButtons()
+            updateWidget()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -247,6 +253,36 @@ class PlaybackService : MediaSessionService() {
                 updateWidget()
             }
         }
+
+        // Offline Mode switched on: stop streaming right away
+        serviceScope.launch {
+            NetworkPolicyManager.getInstance(this@PlaybackService).offlineOnlyMode.drop(1).collect { offline ->
+                if (offline) dropOnlineSongs()
+            }
+        }
+    }
+
+    /**
+     * Offline Mode: online songs leave the queue (one playing now too: the next song plays instead). Songs
+     * downloaded meanwhile stay, playing from the file. With nothing left the player stops.
+     */
+    private fun dropOnlineSongs() {
+        if (!::exoPlayer.isInitialized) return
+        val downloads = DownloadIndex.getInstance(this)
+        for (i in exoPlayer.mediaItemCount - 1 downTo 0) {
+            val item = exoPlayer.getMediaItemAt(i)
+            val uri = item.localConfiguration?.uri?.toString() ?: continue
+            // Songs on the phone are content:// (or file://); anything else needs the internet, including
+            // the Downloader's "Preview online", which plays the stream's web address directly
+            if (uri.startsWith("content:") || uri.startsWith("file:")) continue
+            val localId = Song.webUrlOf(uri)?.let { downloads.downloadedIdFor(it) }
+            if (localId != null) {
+                exoPlayer.replaceMediaItem(i, item.buildUpon().setMediaId(localId.toString()).setUri(localSongUri(localId)).build())
+            } else {
+                exoPlayer.removeMediaItem(i)
+            }
+        }
+        if (exoPlayer.mediaItemCount == 0) exoPlayer.stop()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -344,6 +380,8 @@ class PlaybackService : MediaSessionService() {
             isPlaying = player.isPlaying,
             songId = currentSongId(),
             shuffle = player.shuffleModeEnabled,
+            // The user's own mode (the car's RPT sees a translated one through CarRepeatPlayer)
+            repeatMode = if (::exoPlayer.isInitialized) exoPlayer.repeatMode else player.repeatMode,
             positionMs = player.currentPosition.coerceAtLeast(0),
             durationMs = player.duration.takeIf { it > 0 } ?: 0L
         )
@@ -404,31 +442,76 @@ class PlaybackService : MediaSessionService() {
             .setSlots(CommandButton.SLOT_OVERFLOW)
             .build()
 
+    // What the last press from the tile or the playlist widget asked for (see [startFromOutside])
+    private class OutsideRequest(val target: String, val shuffle: Boolean)
+    private var outsideRequest: OutsideRequest? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val target = intent?.getStringExtra(EXTRA_START_TARGET)
+        if (target != null && ::exoPlayer.isInitialized) {
+            if (target != START_RESUME) {
+                // A playlist replaces what's loaded: with the player empty, the Play press handled below
+                // asks onPlaybackResumption for the songs
+                exoPlayer.clearMediaItems()
+                outsideRequest = OutsideRequest(target, intent.getBooleanExtra(EXTRA_START_SHUFFLE, false))
+            } else if (exoPlayer.mediaItemCount == 0) {
+                // "Resume" with something loaded just plays it
+                outsideRequest = OutsideRequest(target, shuffle = true)
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    /** The saved queue to pick up again (without online songs in Offline Mode), or null when there's none. */
+    private fun savedQueueToResume(): SavedQueue? {
+        val offline = NetworkPolicyManager.getInstance(this).isOfflineOnlyMode
+        return queueStore.load()
+            ?.preferDownloads(DownloadIndex.getInstance(this))
+            ?.let { if (offline) it.withoutOnlineSongs() else it }
+            ?.takeIf { it.songs.isNotEmpty() }
+    }
+
     /**
-     * The playlist widget's tap: finds the songs of [EXTRA_PLAY_TARGET] (a [PlayTarget] key) and plays them,
-     * shuffled when [EXTRA_SHUFFLE]. Answers RESULT_ERROR_BAD_VALUE when there's nothing to play.
+     * The songs for a press from the tile or the playlist widget: the last queue ([START_RESUME]) or a
+     * [PlayTarget]. When there's nothing (no saved queue, an empty playlist) the whole library is shuffled,
+     * so the press always plays something; it only fails with no songs at all.
      */
-    private fun playTarget(args: Bundle): ListenableFuture<SessionResult> {
-        val target = PlayTarget.fromKey(args.getString(EXTRA_PLAY_TARGET))
-            ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
-        val shuffle = args.getBoolean(EXTRA_SHUFFLE)
-        val result = SettableFuture.create<SessionResult>()
+    private fun songsFor(request: OutsideRequest): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        if (request.target == START_RESUME) {
+            savedQueueToResume()?.let { saved ->
+                exoPlayer.shuffleModeEnabled = saved.shuffle
+                exoPlayer.repeatMode = saved.repeatMode
+                return Futures.immediateFuture(
+                    MediaSession.MediaItemsWithStartPosition(saved.songs.map { it.toSong().toMediaItem() }, saved.index, saved.positionMs)
+                )
+            }
+        }
+        val result = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
         serviceScope.launch {
             val settings = AppSettings.getInstance(this@PlaybackService)
             val library = withContext(Dispatchers.IO) {
                 AudioRepository(this@PlaybackService).getLocalSongs(settings.filterShortAudio.value, settings.filterRecordings.value)
             }
-            val songs = target.songs(library, playlists.favoriteSongIds.value, playlists.playCounts.value, playlists.customPlaylists.value)
+            val target = PlayTarget.fromKey(request.target) ?: PlayTarget.ShuffleAll
+            var songs = target.songs(library, playlists.favoriteSongIds.value, playlists.playCounts.value, playlists.customPlaylists.value)
+            var shuffle = request.shuffle || target == PlayTarget.ShuffleAll
+            if (songs.isEmpty() && library.isNotEmpty()) {
+                if (target != PlayTarget.ShuffleAll) {
+                    val name = target.label(playlists.customPlaylists.value)
+                    Toast.makeText(this@PlaybackService, "Nothing in $name yet, shuffling all songs", Toast.LENGTH_SHORT).show()
+                }
+                songs = library
+                shuffle = true
+            }
             if (songs.isEmpty()) {
-                result.set(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+                result.setException(UnsupportedOperationException("No songs"))
                 return@launch
             }
             // Shuffled like the app's own Shuffle buttons; "in order" really plays in order
             if (!shuffle) exoPlayer.shuffleModeEnabled = false
-            exoPlayer.setMediaItems((if (shuffle) songs.shuffled() else songs).map { it.toMediaItem() }, 0, 0L)
-            exoPlayer.prepare()
-            exoPlayer.play()
-            result.set(SessionResult(SessionResult.RESULT_SUCCESS))
+            result.set(
+                MediaSession.MediaItemsWithStartPosition((if (shuffle) songs.shuffled() else songs).map { it.toMediaItem() }, 0, 0L)
+            )
         }
         return result
     }
@@ -450,8 +533,6 @@ class PlaybackService : MediaSessionService() {
                 .add(FAVORITE_COMMAND)
                 .add(SHUFFLE_COMMAND)
                 .add(REPEAT_COMMAND)
-                // "Play this playlist" is only for the app's own widget
-                .apply { if (controller.packageName == packageName) add(PLAY_TARGET_COMMAND) }
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
@@ -469,33 +550,29 @@ class PlaybackService : MediaSessionService() {
                 ACTION_TOGGLE_FAVORITE -> currentSongId()?.let { playlists.toggleFavorite(it) }
                 ACTION_TOGGLE_SHUFFLE -> exoPlayer.shuffleModeEnabled = !exoPlayer.shuffleModeEnabled
                 // Straight to the player: these are the app's own buttons, not the car's RPT
-                ACTION_CYCLE_REPEAT -> exoPlayer.repeatMode = when (exoPlayer.repeatMode) {
-                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                    else -> Player.REPEAT_MODE_OFF
-                }
-                ACTION_PLAY_TARGET -> return playTarget(args)
+                ACTION_CYCLE_REPEAT -> exoPlayer.repeatMode = nextRepeatMode(exoPlayer.repeatMode)
                 else -> return super.onCustomCommand(session, controller, customCommand, args)
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-            return super.onCustomCommand(session, controller, customCommand, args)
         }
 
         /**
-         * Called when a car radio or headset presses Play while nothing is loaded, including when
-         * Android had to start this service from scratch because the app was closed.
+         * Called when Play is pressed while nothing is loaded, including when Android had to start this
+         * service from scratch because the app was closed: by a car radio or headset (the last queue, if
+         * "Resume with Play Button" is on), or by the tile or the playlist widget ([startFromOutside]).
          */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            outsideRequest?.let { request ->
+                outsideRequest = null
+                return songsFor(request)
+            }
             if (!resumeSettings.resumeFromPlayButton) {
                 return Futures.immediateFailedFuture(UnsupportedOperationException("Resume is turned off"))
             }
-            val offline = NetworkPolicyManager.getInstance(this@PlaybackService).isOfflineOnlyMode
-            val saved = queueStore.load()
-                ?.preferDownloads(DownloadIndex.getInstance(this@PlaybackService))
-                ?.let { if (offline) it.withoutOnlineSongs() else it }
+            val saved = savedQueueToResume()
                 ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
 
             // Straight to the player: the saved repeat mode is the user's, not a car's request
@@ -513,31 +590,58 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
-        /** Custom command for the playlist widget: play a [PlayTarget] ([EXTRA_PLAY_TARGET], [EXTRA_SHUFFLE]). */
-        const val ACTION_PLAY_TARGET = "com.wildmusicplayer.PLAY_TARGET"
-        const val EXTRA_PLAY_TARGET = "target"
-        const val EXTRA_SHUFFLE = "shuffle"
-        private val PLAY_TARGET_COMMAND = SessionCommand(ACTION_PLAY_TARGET, Bundle.EMPTY)
+        /** For [startFromOutside]: play the last queue again (or shuffle everything when there's none). */
+        const val START_RESUME = "resume"
+        private const val EXTRA_START_TARGET = "com.wildmusicplayer.START_TARGET"
+        private const val EXTRA_START_SHUFFLE = "com.wildmusicplayer.START_SHUFFLE"
+
+        /**
+         * Starts playback from outside the app (the Quick Settings tile, the playlist widget), the way a
+         * headset's Play button does: Android starts this service in the foreground for it. It must be in
+         * the foreground (or the app on screen) to get audio focus; asked any other way from the background,
+         * Android 15 refuses and the music stays paused. [target] is a [PlayTarget] key or [START_RESUME].
+         * False when Android didn't allow the start.
+         */
+        fun startFromOutside(context: Context, target: String, shuffle: Boolean = false): Boolean {
+            val intent = Intent(context, PlaybackService::class.java)
+                .setAction(Intent.ACTION_MEDIA_BUTTON)
+                .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+                .putExtra(EXTRA_START_TARGET, target)
+                .putExtra(EXTRA_START_SHUFFLE, shuffle)
+            return try {
+                ContextCompat.startForegroundService(context, intent)
+                true
+            } catch (e: IllegalStateException) {
+                false
+            }
+        }
+
+        /** True while the player is playing (or about to). */
+        fun isPlaying(): Boolean {
+            val player = running?.mediaSession?.player ?: return false
+            return player.mediaItemCount > 0 && player.playWhenReady
+        }
+
+        /** Pauses the player, if it's running. */
+        fun pause() {
+            running?.mediaSession?.player?.pause()
+        }
 
         // The running service, for the widget's previous / next buttons (same process, main thread)
         @Volatile private var running: PlaybackService? = null
-
-        /**
-         * Play / pause for the Quick Settings tile. False when there's nothing loaded to play or pause
-         * (the player isn't running, or its queue is empty): the tile then asks for the last queue to resume.
-         */
-        fun togglePlayPause(): Boolean {
-            val player = running?.mediaSession?.player ?: return false
-            if (player.mediaItemCount == 0) return false
-            if (player.playWhenReady) player.pause() else player.play()
-            return true
-        }
 
         /** Shuffle on / off for the widget; nothing when the player isn't running. */
         fun toggleShuffle() {
             val service = running ?: return
             if (!service::exoPlayer.isInitialized) return
             service.exoPlayer.shuffleModeEnabled = !service.exoPlayer.shuffleModeEnabled
+        }
+
+        /** Repeat off -> all -> one for the widget; nothing when the player isn't running. */
+        fun cycleRepeat() {
+            val service = running ?: return
+            if (!service::exoPlayer.isInitialized) return
+            service.exoPlayer.repeatMode = nextRepeatMode(service.exoPlayer.repeatMode)
         }
 
         /** Skips in the playing queue; does nothing when the player isn't running (nothing to skip). */
@@ -564,6 +668,13 @@ class PlaybackService : MediaSessionService() {
         private val SHUFFLE_COMMAND = SessionCommand(ACTION_TOGGLE_SHUFFLE, Bundle.EMPTY)
         private val REPEAT_COMMAND = SessionCommand(ACTION_CYCLE_REPEAT, Bundle.EMPTY)
     }
+}
+
+/** The app's own repeat button order: off -> all -> one -> off. */
+internal fun nextRepeatMode(current: Int): Int = when (current) {
+    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+    else -> Player.REPEAT_MODE_OFF
 }
 
 /**

@@ -1,5 +1,14 @@
 package com.wildmusicplayer
 
+import com.wildmusicplayer.ui.screens.SettingsPage
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Badge
+import com.wildmusicplayer.data.DownloadPrecondition
+import com.wildmusicplayer.ui.components.DownloadQueueSheet
+import com.wildmusicplayer.data.DownloadState
+import com.wildmusicplayer.data.DownloadPause
+import com.wildmusicplayer.data.DownloadQueue
 import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.runtime.MutableState
 import com.wildmusicplayer.ui.LocalEditSong
@@ -182,6 +191,19 @@ class MainActivity : ComponentActivity() {
     // What an app icon shortcut asked to play (Shuffle all, Favorites, a playlist), until it's started
     private val shortcutTarget = mutableStateOf<String?>(null)
 
+    // "Background Downloading" off: the download queue only runs while the app is on screen
+    override fun onStart() {
+        super.onStart()
+        if (DownloadQueue.resume(DownloadPause.APP_IN_BACKGROUND)) SongDownloadService.startIfNeeded(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations && !NetworkPolicyManager.getInstance(this).backgroundDownloads) {
+            DownloadQueue.pause(DownloadPause.APP_IN_BACKGROUND)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -322,11 +344,17 @@ fun MusicPlayerApp(
 
     val isOfflineOnlyMode by networkPolicyManager.offlineOnlyMode.collectAsState()
     val setOfflineMode: (Boolean) -> Unit = { enabled ->
+        val waiting = DownloadQueue.items.value.count { it.state != DownloadState.FAILED }
         networkPolicyManager.isOfflineOnlyMode = enabled
+        val downloads = when {
+            waiting == 0 -> ""
+            enabled -> if (waiting == 1) " · 1 download paused" else " · $waiting downloads paused"
+            else -> if (waiting == 1) " · 1 download continues" else " · $waiting downloads continue"
+        }
         val msg = if (enabled) {
-            "Switched to Offline Mode (Zero data usage, 100% local)"
+            "Offline Mode: streaming stopped, no internet use$downloads"
         } else {
-            "Switched to Online Mode (Search & streaming unlocked)"
+            "Online Mode: search and streaming are back$downloads"
         }
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
     }
@@ -336,7 +364,15 @@ fun MusicPlayerApp(
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+    // The Settings page open (null = the list of pages)
+    var settingsPage by remember { mutableStateOf<SettingsPage?>(null) }
+    // Back from a Settings page goes to the list; from the list, out of Settings
+    val closeSettingsLevel = {
+        if (settingsPage != null) settingsPage = null else isSettingsOpen = false
+    }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showDownloads by remember { mutableStateOf(false) }
+    val downloadQueue by DownloadQueue.items.collectAsState()
     var isSplashVisible by remember { mutableStateOf(true) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
 
@@ -556,7 +592,7 @@ fun MusicPlayerApp(
     // register a later BackHandler, which wins, so Back closes the detail view first.
     BackHandler(enabled = isSettingsOpen || currentTab != NavigationTab.HOME) {
         if (isSettingsOpen) {
-            isSettingsOpen = false
+            closeSettingsLevel()
         } else if (currentTab != NavigationTab.HOME) {
             currentTab = NavigationTab.HOME
         }
@@ -569,7 +605,7 @@ fun MusicPlayerApp(
                     title = {
                         Text(
                             text = if (isSettingsOpen) {
-                                "Settings"
+                                settingsPage?.title ?: "Settings"
                             } else {
                                 when (currentTab) {
                                     NavigationTab.HOME -> "Wild Music Player"
@@ -584,7 +620,7 @@ fun MusicPlayerApp(
                     },
                     navigationIcon = {
                         if (isSettingsOpen) {
-                            IconButton(onClick = { isSettingsOpen = false }) {
+                            IconButton(onClick = closeSettingsLevel) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Back",
@@ -594,6 +630,18 @@ fun MusicPlayerApp(
                         }
                     },
                     actions = {
+                        // The download queue, while there's something in it
+                        if (downloadQueue.isNotEmpty()) {
+                            IconButton(onClick = { showDownloads = true }) {
+                                BadgedBox(badge = { Badge { Text("${downloadQueue.size}") } }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = "Downloads",
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
                         // Quick Mode Toggle Pill (Online vs Offline)
                         Surface(
                             onClick = { setOfflineMode(!isOfflineOnlyMode) },
@@ -642,7 +690,10 @@ fun MusicPlayerApp(
                                 )
                             }
                         } else {
-                            IconButton(onClick = { isSettingsOpen = true }) {
+                            IconButton(onClick = {
+                                settingsPage = null
+                                isSettingsOpen = true
+                            }) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
                                     contentDescription = "Settings",
@@ -710,6 +761,9 @@ fun MusicPlayerApp(
 
                     if (isSettingsOpen) {
                         SettingsScreen(
+                            page = settingsPage,
+                            onOpenPage = { settingsPage = it },
+                            onShowDownloads = { showDownloads = true },
                             currentTheme = currentTheme,
                             currentAccent = currentAccent,
                             onAccentSelected = {
@@ -844,7 +898,6 @@ fun MusicPlayerApp(
                                 downloadManager = downloadManager,
                                 controllerManager = controllerManager,
                                 bottomPadding = contentBottomPadding,
-                                onDownloadComplete = { library.reload() },
                                 isOfflineOnlyMode = isOfflineOnlyMode,
                                 onSwitchToOnline = { setOfflineMode(false) },
                                 playlistRepository = playlistRepository
@@ -959,6 +1012,21 @@ fun MusicPlayerApp(
             )
         }
 
+        // The download queue (top bar button, Settings)
+        if (showDownloads) {
+            DownloadQueueSheet(
+                onRetry = { id ->
+                    if (networkPolicyManager.checkDownloadPrecondition() is DownloadPrecondition.Allowed) {
+                        DownloadQueue.retry(id)
+                        SongDownloadService.startIfNeeded(context)
+                    } else {
+                        Toast.makeText(context, "Can't download right now: check Offline Mode and your connection", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onGoOnline = { setOfflineMode(false) },
+                onDismiss = { showDownloads = false }
+            )
+        }
         // About & Credits Dialog Modal
         if (showAboutDialog) {
             AboutDialog(

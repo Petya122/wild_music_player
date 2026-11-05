@@ -9,15 +9,9 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.os.Build
-import android.os.Bundle
 import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.compose.ui.graphics.toArgb
-import androidx.core.content.ContextCompat
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
-import androidx.media3.session.SessionToken
 import com.wildmusicplayer.R
 import com.wildmusicplayer.data.AppSettings
 import com.wildmusicplayer.data.PlayTarget
@@ -28,8 +22,8 @@ import com.wildmusicplayer.ui.theme.AccentColor
 
 /**
  * A one-tap widget for a playlist, Favorites, Most Played, Recently Added or Shuffle all: picked when it's
- * placed ([PlaylistWidgetConfigActivity]), changeable later by long-pressing it (Android 12+). The tap asks
- * the playback service to play it, so it works with the app closed, like a car's Play button.
+ * placed ([PlaylistWidgetConfigActivity]), changed later by tapping its name. The play button asks the
+ * playback service to play it, so it works with the app closed, like a car's Play button.
  */
 class PlaylistWidget : AppWidgetProvider() {
 
@@ -49,12 +43,14 @@ class PlaylistWidget : AppWidgetProvider() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val target = PlayTarget.fromKey(prefs.getString(targetKey(widgetId), null)) ?: PlayTarget.ShuffleAll
         val shuffle = prefs.getBoolean(shuffleKey(widgetId), target == PlayTarget.ShuffleAll)
-        play(context, target, shuffle, goAsync())
+        play(context, target, shuffle)
     }
 
     companion object {
         private const val PREFS_NAME = "playlist_widget"
         private const val ACTION_PLAY = "com.wildmusicplayer.widget.PLAY_TARGET"
+        // Keeps the "choose" PendingIntents apart from the "play" ones (which use the widget ID itself)
+        private const val CHOOSE_REQUEST_BASE = 100_000
 
         private fun targetKey(widgetId: Int) = "target_$widgetId"
         private fun shuffleKey(widgetId: Int) = "shuffle_$widgetId"
@@ -90,7 +86,7 @@ class PlaylistWidget : AppWidgetProvider() {
                 setTextViewText(R.id.playlist_widget_title, target.label(playlists))
                 setTextViewText(
                     R.id.playlist_widget_subtitle,
-                    context.getString(if (shuffle) R.string.playlist_widget_tap_to_shuffle else R.string.playlist_widget_tap_to_play)
+                    context.getString(if (shuffle) R.string.playlist_widget_shuffle_change else R.string.playlist_widget_in_order_change)
                 )
                 setImageViewResource(
                     R.id.playlist_widget_icon,
@@ -112,40 +108,26 @@ class PlaylistWidget : AppWidgetProvider() {
                         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
-                setOnClickPendingIntent(R.id.playlist_widget_root, tap)
+                // The name opens the chooser; the play button plays
+                val choose = PendingIntent.getActivity(
+                    context,
+                    CHOOSE_REQUEST_BASE + widgetId,
+                    Intent(context, PlaylistWidgetConfigActivity::class.java)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                setOnClickPendingIntent(R.id.playlist_widget_root, choose)
                 setOnClickPendingIntent(R.id.playlist_widget_play, tap)
             }
             manager.updateAppWidget(widgetId, views)
         }
 
-        /**
-         * Asks the playback service (started by connecting to it, if it wasn't running) to play [target].
-         * The service finds the songs itself; [pending] keeps this receiver alive meanwhile.
-         */
-        private fun play(context: Context, target: PlayTarget, shuffle: Boolean, pending: PendingResult) {
-            val appContext = context.applicationContext
-            val future = MediaController.Builder(appContext, SessionToken(appContext, ComponentName(appContext, PlaybackService::class.java)))
-                .buildAsync()
-            future.addListener({
-                val controller = runCatching { future.get() }.getOrNull()
-                if (controller == null) {
-                    pending.finish()
-                    return@addListener
-                }
-                val args = Bundle().apply {
-                    putString(PlaybackService.EXTRA_PLAY_TARGET, target.key)
-                    putBoolean(PlaybackService.EXTRA_SHUFFLE, shuffle)
-                }
-                val result = controller.sendCustomCommand(SessionCommand(PlaybackService.ACTION_PLAY_TARGET, Bundle.EMPTY), args)
-                result.addListener({
-                    val code = runCatching { result.get().resultCode }.getOrDefault(SessionResult.RESULT_ERROR_UNKNOWN)
-                    if (code == SessionResult.RESULT_ERROR_BAD_VALUE) {
-                        Toast.makeText(appContext, "Nothing to play in ${target.label(PlaylistRepository.getInstance(appContext).customPlaylists.value)} yet", Toast.LENGTH_SHORT).show()
-                    }
-                    controller.release()
-                    pending.finish()
-                }, ContextCompat.getMainExecutor(appContext))
-            }, ContextCompat.getMainExecutor(appContext))
+        /** Plays [target] like a headset's Play button would, so it works with the app closed too. */
+        private fun play(context: Context, target: PlayTarget, shuffle: Boolean) {
+            if (!PlaybackService.startFromOutside(context, target.key, shuffle)) {
+                Toast.makeText(context, "Open Wild Music to play ${target.label(PlaylistRepository.getInstance(context).customPlaylists.value)}", Toast.LENGTH_SHORT).show()
+            }
         }
 
         // The app's accent color, in the shade for the phone's light or dark mode

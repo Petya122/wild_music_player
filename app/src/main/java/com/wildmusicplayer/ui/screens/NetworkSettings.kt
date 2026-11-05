@@ -272,37 +272,36 @@ internal fun DownloadsSection(isOfflineOnlyMode: Boolean, onOfflineOnlyModeToggl
     }
 }
 
+/** Why each permission is needed, with links to manage them. */
 @Composable
-internal fun PermissionsAndRepairCards(
-    downloadManager: YouTubeDownloadManager?,
-    isOfflineOnlyMode: Boolean,
-    onLibraryChanged: () -> Unit
-) {
+internal fun PermissionsCard() {
     var showPermissionsDialog by remember { mutableStateOf(false) }
-    var showTagRepair by remember { mutableStateOf(false) }
-
     SettingsLinkCard(
         icon = Icons.Default.Security,
         title = "Permissions & Privacy",
         subtitle = "Learn why each permission is needed and manage access",
         onClick = { showPermissionsDialog = true }
     )
-
-    // Fix tags on songs downloaded before v0.6.0
-    if (downloadManager != null) {
-        SettingsLinkCard(
-            icon = Icons.Default.AutoFixHigh,
-            title = "Fix Downloaded Song Tags",
-            subtitle = "Add the artist and cover art to songs downloaded before v0.6.0",
-            onClick = { showTagRepair = true }
-        )
-    }
-
     if (showPermissionsDialog) {
         PermissionsDialog(onDismiss = { showPermissionsDialog = false })
     }
+}
 
-    if (showTagRepair && downloadManager != null) {
+/** Fix tags on songs downloaded before v0.6.0. */
+@Composable
+internal fun TagRepairCard(
+    downloadManager: YouTubeDownloadManager,
+    isOfflineOnlyMode: Boolean,
+    onLibraryChanged: () -> Unit
+) {
+    var showTagRepair by remember { mutableStateOf(false) }
+    SettingsLinkCard(
+        icon = Icons.Default.AutoFixHigh,
+        title = "Fix Downloaded Song Tags",
+        subtitle = "Add the artist and cover art to songs downloaded before v0.6.0",
+        onClick = { showTagRepair = true }
+    )
+    if (showTagRepair) {
         TagRepairDialog(
             downloadManager = downloadManager,
             isOfflineOnlyMode = isOfflineOnlyMode,

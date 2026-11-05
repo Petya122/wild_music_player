@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.util.SizeF
 import android.view.KeyEvent
 import android.widget.RemoteViews
+import androidx.media3.common.Player
 import androidx.compose.ui.graphics.toArgb
 import androidx.media3.session.MediaButtonReceiver
 import coil3.SingletonImageLoader
@@ -54,6 +55,7 @@ class PlayerWidget : AppWidgetProvider() {
             ACTION_NEXT -> PlaybackService.skip(next = true)
             ACTION_PREVIOUS -> PlaybackService.skip(next = false)
             ACTION_SHUFFLE -> PlaybackService.toggleShuffle()
+            ACTION_REPEAT -> PlaybackService.cycleRepeat()
             // Works with the app closed too: favorites are saved right away
             ACTION_FAVORITE -> {
                 val songId = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_SONG_ID, -1L)
@@ -74,9 +76,11 @@ class PlayerWidget : AppWidgetProvider() {
         private const val ACTION_NEXT = "com.wildmusicplayer.widget.NEXT"
         private const val ACTION_PREVIOUS = "com.wildmusicplayer.widget.PREVIOUS"
         private const val ACTION_SHUFFLE = "com.wildmusicplayer.widget.SHUFFLE"
+        private const val ACTION_REPEAT = "com.wildmusicplayer.widget.REPEAT"
         private const val ACTION_FAVORITE = "com.wildmusicplayer.widget.FAVORITE"
         private const val KEY_SONG_ID = "song_id"
         private const val KEY_SHUFFLE = "shuffle"
+        private const val KEY_REPEAT = "repeat"
         private const val KEY_POSITION = "position"
         private const val KEY_DURATION = "duration"
         private const val PREFS_NAME = "player_widget"
@@ -95,7 +99,7 @@ class PlayerWidget : AppWidgetProvider() {
         @Volatile private var coverBitmap: Bitmap? = null
 
         /**
-         * Called by PlaybackService when the song, play state, shuffle or position changes; null [title] =
+         * Called by PlaybackService when the song, play state, shuffle, repeat or position changes; null [title] =
          * nothing loaded. [songId] is null for online streams (no heart then).
          */
         fun update(
@@ -106,6 +110,7 @@ class PlayerWidget : AppWidgetProvider() {
             isPlaying: Boolean,
             songId: Long? = null,
             shuffle: Boolean = false,
+            repeatMode: Int = Player.REPEAT_MODE_OFF,
             positionMs: Long = 0L,
             durationMs: Long = 0L
         ) {
@@ -116,6 +121,7 @@ class PlayerWidget : AppWidgetProvider() {
                 .putBoolean(KEY_PLAYING, isPlaying)
                 .putLong(KEY_SONG_ID, songId ?: -1L)
                 .putBoolean(KEY_SHUFFLE, shuffle)
+                .putInt(KEY_REPEAT, repeatMode)
                 .putLong(KEY_POSITION, positionMs)
                 .putLong(KEY_DURATION, durationMs)
                 .apply()
@@ -162,6 +168,7 @@ class PlayerWidget : AppWidgetProvider() {
                 isFavorite = songId > 0 && songId in PlaylistRepository.getInstance(context).favoriteSongIds.value,
                 canFavorite = songId > 0,
                 shuffle = prefs.getBoolean(KEY_SHUFFLE, false),
+                repeatMode = prefs.getInt(KEY_REPEAT, Player.REPEAT_MODE_OFF),
                 positionMs = prefs.getLong(KEY_POSITION, 0L),
                 durationMs = prefs.getLong(KEY_DURATION, 0L)
             )
@@ -224,11 +231,28 @@ class PlayerWidget : AppWidgetProvider() {
                     setViewVisibility(R.id.widget_favorite, if (state.canFavorite) View.VISIBLE else View.INVISIBLE)
                     // Shuffle off: dimmed. On (and a liked song's heart): the accent color, from Android 12
                     setInt(R.id.widget_shuffle, "setImageAlpha", if (state.shuffle) 255 else 110)
+                    // Repeat: off (dimmed) -> all -> one (the "1" icon), like the app's button
+                    val repeatOn = state.repeatMode != Player.REPEAT_MODE_OFF
+                    setImageViewResource(
+                        R.id.widget_repeat,
+                        if (state.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_widget_repeat_one else R.drawable.ic_widget_repeat
+                    )
+                    setInt(R.id.widget_repeat, "setImageAlpha", if (repeatOn) 255 else 110)
+                    setContentDescription(
+                        R.id.widget_repeat,
+                        when (state.repeatMode) {
+                            Player.REPEAT_MODE_ONE -> "Repeat this song"
+                            Player.REPEAT_MODE_ALL -> "Repeat all"
+                            else -> "Repeat off"
+                        }
+                    )
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         if (state.shuffle) setColorStateList(R.id.widget_shuffle, "setImageTintList", accent)
+                        if (repeatOn) setColorStateList(R.id.widget_repeat, "setImageTintList", accent)
                         if (state.isFavorite) setColorStateList(R.id.widget_favorite, "setImageTintList", accent)
                     }
                     setOnClickPendingIntent(R.id.widget_shuffle, widgetAction(context, ACTION_SHUFFLE))
+                    setOnClickPendingIntent(R.id.widget_repeat, widgetAction(context, ACTION_REPEAT))
                     setOnClickPendingIntent(R.id.widget_favorite, widgetAction(context, ACTION_FAVORITE))
                 }
                 setTextViewText(R.id.widget_title, state.title ?: context.getString(R.string.widget_nothing_playing))
@@ -297,6 +321,7 @@ class PlayerWidget : AppWidgetProvider() {
         val isFavorite: Boolean = false,
         val canFavorite: Boolean = false,
         val shuffle: Boolean = false,
+        val repeatMode: Int = Player.REPEAT_MODE_OFF,
         val positionMs: Long = 0L,
         val durationMs: Long = 0L
     )

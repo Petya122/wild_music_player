@@ -12,52 +12,60 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.wildmusicplayer.R
+import com.wildmusicplayer.data.DownloadQueue
+import com.wildmusicplayer.data.DownloadState
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.data.YouTubeTrack
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentLinkedQueue
 
+/**
+ * Downloads the songs in [DownloadQueue], one at a time, in the foreground (with a progress notification)
+ * so it keeps going with the app closed. Stops itself when the queue is empty or paused (Offline Mode).
+ */
 class SongDownloadService : Service() {
 
     companion object {
         const val CHANNEL_ID = "song_downloads_channel"
         const val NOTIFICATION_ID = 2001
 
-        const val EXTRA_TRACK_ID = "extra_track_id"
-        const val EXTRA_TRACK_TITLE = "extra_track_title"
-        const val EXTRA_TRACK_UPLOADER = "extra_track_uploader"
-        const val EXTRA_TRACK_URL = "extra_track_url"
-        const val EXTRA_TRACK_DURATION = "extra_track_duration"
-        const val EXTRA_TRACK_THUMBNAIL = "extra_track_thumbnail"
-        const val EXTRA_TRACK_IS_MUSIC_SONG = "extra_track_is_music_song"
+        private val flowScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-        private val _activeDownloads = MutableStateFlow<Map<String, Float>>(emptyMap())
-        val activeDownloads = _activeDownloads.asStateFlow()
+        /** Progress 0..1 of every song waiting or downloading, by track ID (failed ones aren't in it). */
+        val activeDownloads: StateFlow<Map<String, Float>> = DownloadQueue.items
+            .map { items -> items.filter { it.state != DownloadState.FAILED }.associate { it.track.id to it.progress } }
+            .stateIn(flowScope, SharingStarted.Eagerly, emptyMap())
 
-        private val _completedTrackIds = MutableStateFlow<Set<String>>(emptySet())
-        val completedTrackIds = _completedTrackIds.asStateFlow()
+        /** Songs downloaded since the app started. */
+        val completedTrackIds: StateFlow<Set<String>> = DownloadQueue.completed
 
+        /** Adds [track] to the download queue and makes sure it's being worked through. */
         fun startDownload(context: Context, track: YouTubeTrack) {
-            val intent = Intent(context, SongDownloadService::class.java).apply {
-                putExtra(EXTRA_TRACK_ID, track.id)
-                putExtra(EXTRA_TRACK_TITLE, track.title)
-                putExtra(EXTRA_TRACK_UPLOADER, track.uploaderName)
-                putExtra(EXTRA_TRACK_URL, track.webUrl)
-                putExtra(EXTRA_TRACK_DURATION, track.durationSeconds)
-                putExtra(EXTRA_TRACK_THUMBNAIL, track.thumbnailUrl)
-                putExtra(EXTRA_TRACK_IS_MUSIC_SONG, track.isMusicSong)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            DownloadQueue.add(track)
+            startIfNeeded(context)
+        }
+
+        /** Starts the service when songs wait and nothing pauses the queue (e.g. after going online again). */
+        fun startIfNeeded(context: Context) {
+            if (!DownloadQueue.canStart) return
+            val intent = Intent(context, SongDownloadService::class.java)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: IllegalStateException) {
+                // Not allowed from the background right now: the queue waits for the next start
             }
         }
     }
@@ -67,7 +75,6 @@ class SongDownloadService : Service() {
     private lateinit var notificationManager: NotificationManager
     private var wakeLock: PowerManager.WakeLock? = null
 
-    private val downloadQueue = ConcurrentLinkedQueue<YouTubeTrack>()
     @Volatile
     private var isDownloading = false
 
@@ -87,69 +94,47 @@ class SongDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.let {
-            val trackId = it.getStringExtra(EXTRA_TRACK_ID)
-            val title = it.getStringExtra(EXTRA_TRACK_TITLE) ?: "Unknown Track"
-            val uploader = it.getStringExtra(EXTRA_TRACK_UPLOADER) ?: "Unknown Artist"
-            val url = it.getStringExtra(EXTRA_TRACK_URL) ?: ""
-            val duration = it.getLongExtra(EXTRA_TRACK_DURATION, 0L)
-            val thumbnail = it.getStringExtra(EXTRA_TRACK_THUMBNAIL)
-            val isMusicSong = it.getBooleanExtra(EXTRA_TRACK_IS_MUSIC_SONG, false)
-
-            if (!trackId.isNullOrBlank() && url.isNotBlank()) {
-                val track = YouTubeTrack(
-                    id = trackId,
-                    title = title,
-                    uploaderName = uploader,
-                    durationSeconds = duration,
-                    thumbnailUrl = thumbnail,
-                    webUrl = url,
-                    isMusicSong = isMusicSong
-                )
-                enqueueTrack(track)
-            }
-        }
-
-        return START_NOT_STICKY
-    }
-
-    private fun enqueueTrack(track: YouTubeTrack) {
-        downloadQueue.offer(track)
-        updateActiveDownloads(track.id, 0f)
-        promoteToForeground(track.title, 0)
+        // Android wants the notification right away, even if there turns out to be nothing to do
+        val first = DownloadQueue.items.value.firstOrNull { it.state != DownloadState.FAILED }
+        promoteToForeground(first?.track?.title ?: "Downloads", 0)
         processNext()
+        return START_NOT_STICKY
     }
 
     private fun processNext() {
         if (isDownloading) return
 
-        val nextTrack = downloadQueue.poll()
-        if (nextTrack == null) {
+        val next = DownloadQueue.takeNext()
+        if (next == null) {
             finishService()
             return
         }
 
         isDownloading = true
         wakeLock?.acquire(10 * 60 * 1000L) // 10 min safety timeout
+        val track = next.track
 
         serviceScope.launch {
             var lastUpdateMs = 0L
-            val result = downloadManager.downloadTrack(nextTrack) { progress ->
-                updateActiveDownloads(nextTrack.id, progress)
+            val result = downloadManager.downloadTrack(track) { progress ->
+                // Paused (offline) or removed from the queue: stop while the bytes are still coming in
+                // (later the file is being saved, so let that finish)
+                if (progress < 0.9f && DownloadQueue.shouldStop(track.id)) throw CancellationException("Download stopped")
+                DownloadQueue.setProgress(track.id, progress)
 
                 val now = System.currentTimeMillis()
                 if (now - lastUpdateMs >= 600L || progress >= 0.99f) {
                     lastUpdateMs = now
-                    updateNotificationProgress(nextTrack.title, (progress * 100).toInt())
+                    updateNotificationProgress(track.title, (progress * 100).toInt())
                 }
             }
 
-            removeActiveDownload(nextTrack.id)
-
             // downloadTrack() already registers the file with MediaStore
-            if (result.isSuccess) {
-                addCompletedTrack(nextTrack.id)
-            }
+            DownloadQueue.finished(
+                track.id,
+                saved = result.isSuccess,
+                error = result.exceptionOrNull()?.message
+            )
 
             // Back on the main thread (like onStartCommand) so the isDownloading check-then-set can't race
             withContext(Dispatchers.Main) {
@@ -181,9 +166,10 @@ class SongDownloadService : Service() {
         notificationManager.notify(NOTIFICATION_ID, buildProgressNotification(title, progress))
     }
 
-    private fun buildProgressNotification(title: String, progress: Int) =
-        NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Downloading Song")
+    private fun buildProgressNotification(title: String, progress: Int): android.app.Notification {
+        val waiting = DownloadQueue.items.value.count { it.state == DownloadState.WAITING }
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(if (waiting > 0) "Downloading song · $waiting more waiting" else "Downloading song")
             .setContentText(title)
             .setSmallIcon(R.drawable.wmp_logo)
             .setProgress(100, progress.coerceIn(0, 100), progress <= 0)
@@ -191,6 +177,7 @@ class SongDownloadService : Service() {
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+    }
 
     private fun finishService() {
         try {
@@ -217,22 +204,6 @@ class SongDownloadService : Service() {
         }
     }
 
-    private fun updateActiveDownloads(trackId: String, progress: Float) {
-        val map = _activeDownloads.value.toMutableMap()
-        map[trackId] = progress
-        _activeDownloads.value = map
-    }
-
-    private fun removeActiveDownload(trackId: String) {
-        val map = _activeDownloads.value.toMutableMap()
-        map.remove(trackId)
-        _activeDownloads.value = map
-    }
-
-    private fun addCompletedTrack(trackId: String) {
-        _completedTrackIds.value = _completedTrackIds.value + trackId
-    }
-
     override fun onDestroy() {
         try {
             if (wakeLock?.isHeld == true) {
@@ -240,6 +211,7 @@ class SongDownloadService : Service() {
             }
         } catch (_: Exception) {}
         serviceScope.cancel()
+        DownloadQueue.interrupted()
         super.onDestroy()
     }
 
