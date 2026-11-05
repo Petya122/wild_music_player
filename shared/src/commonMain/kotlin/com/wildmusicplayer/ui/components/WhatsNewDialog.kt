@@ -38,6 +38,12 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.3", listOf(
+            ChangelogEntry("🔁", "Car RPT Button", "The RPT button on the car radio now switches between repeat off and repeat this song, which is what the RPT light shows. Repeat-all is still on the app's own repeat button."),
+            ChangelogEntry("🚗", "RPT After Reconnecting", "With repeat-one on, RPT comes back on the car display after it reconnects. The app now waits 2 seconds between the changes, slow enough for the radio, and no longer pauses the music for it.")
+        )
+    ),
+    ReleaseNotes(
         "0.9.2", listOf(
             ChangelogEntry("🏠", "Home-Screen Widget", "Long-press your home screen → Widgets → Wild Music Player. Cover, song, and previous / play-pause / next, in your accent color. Stretch it taller for a big cover. Play works even when the app is closed."),
             ChangelogEntry("🔥", "Most Played & Recently Added", "Two automatic playlists in the Playlists tab. A song counts as played after 30 seconds (counting starts with this version, also with the app closed)."),

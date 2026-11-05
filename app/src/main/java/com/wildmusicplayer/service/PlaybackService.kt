@@ -24,6 +24,7 @@ import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -194,7 +195,7 @@ class PlaybackService : MediaSessionService() {
         player.addListener(playerListener)
 
         running = this
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaSession.Builder(this, CarRepeatPlayer(player))
             .setSessionActivity(sessionActivityPendingIntent)
             .setCallback(SessionCallback())
             .build()
@@ -240,18 +241,40 @@ class PlaybackService : MediaSessionService() {
 
     /**
      * Car radios (the Qashqai, at least) only hear the repeat setting when it changes, so RPT can be
-     * missing after a reconnect. Once the car has connected, briefly flip it so the car hears it again.
+     * missing after a reconnect. RPT means "repeat this song" there, so only then: switch repeat off and,
+     * after a pause long enough for the radio (it misses quicker changes), back on. Not in a song's last
+     * seconds, where repeat being off for a moment would let it move on to the next song.
      * (The song title is handled by the matching queue details in toMediaItem.)
      */
     private fun refreshCarDisplay() {
         mainHandler.postDelayed({
             val player = mediaSession?.player ?: return@postDelayed
-            if (player.mediaItemCount == 0) return@postDelayed
+            if (player.mediaItemCount == 0 || player.repeatMode != Player.REPEAT_MODE_ONE) return@postDelayed
+            if (player.duration != C.TIME_UNSET && player.duration - player.currentPosition < CAR_NUDGE_MIN_LEFT_MS) {
+                return@postDelayed
+            }
 
-            val repeatMode = player.repeatMode
-            player.repeatMode = if (repeatMode == Player.REPEAT_MODE_OFF) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
-            mainHandler.postDelayed({ player.repeatMode = repeatMode }, CAR_NUDGE_GAP_MS)
+            player.repeatMode = Player.REPEAT_MODE_OFF
+            mainHandler.postDelayed({
+                // Unless someone changed it meanwhile
+                if (player.repeatMode == Player.REPEAT_MODE_OFF) player.repeatMode = Player.REPEAT_MODE_ONE
+            }, CAR_NUDGE_GAP_MS)
         }, CAR_REFRESH_DELAY_MS)
+    }
+
+    /**
+     * The car's RPT button switches between off and repeat-one, the only kind of repeat the radio shows
+     * (the Qashqai asks for "repeat all" when RPT is pressed, which it then doesn't show). Any other app
+     * or device asking for repeat gets the same; the app's own repeat button keeps off / all / one.
+     */
+    private inner class CarRepeatPlayer(player: ExoPlayer) : ForwardingPlayer(player) {
+        override fun setRepeatMode(repeatMode: Int) {
+            val requester = mediaSession?.controllerForCurrentRequest?.packageName
+            val fromOutside = requester != null && requester != packageName
+            super.setRepeatMode(
+                if (fromOutside && repeatMode != Player.REPEAT_MODE_OFF) Player.REPEAT_MODE_ONE else repeatMode
+            )
+        }
     }
 
     /**
@@ -358,8 +381,10 @@ class PlaybackService : MediaSessionService() {
                 ?.let { if (offline) it.withoutOnlineSongs() else it }
                 ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
 
-            mediaSession.player.shuffleModeEnabled = saved.shuffle
-            mediaSession.player.repeatMode = saved.repeatMode
+            // Straight to the player: the saved repeat mode is the user's, not a car's request
+            val player = (mediaSession.player as? ForwardingPlayer)?.wrappedPlayer ?: mediaSession.player
+            player.shuffleModeEnabled = saved.shuffle
+            player.repeatMode = saved.repeatMode
             return Futures.immediateFuture(
                 MediaSession.MediaItemsWithStartPosition(
                     saved.songs.map { it.toSong().toMediaItem() },
@@ -386,7 +411,9 @@ class PlaybackService : MediaSessionService() {
         private const val RECONNECT_PLAY_DELAY_MS = 1_500L
         // Long enough for the car's control link to come up after the audio one
         private const val CAR_REFRESH_DELAY_MS = 4_000L
-        private const val CAR_NUDGE_GAP_MS = 400L
+        // The Qashqai misses repeat changes closer together than about 1-2 seconds
+        private const val CAR_NUDGE_GAP_MS = 2_000L
+        private const val CAR_NUDGE_MIN_LEFT_MS = 5_000L
 
         private const val ACTION_TOGGLE_FAVORITE = "com.wildmusicplayer.TOGGLE_FAVORITE"
         private val FAVORITE_COMMAND = SessionCommand(ACTION_TOGGLE_FAVORITE, Bundle.EMPTY)
