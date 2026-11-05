@@ -5,6 +5,10 @@ name: iOS Build (on hold)
 on:
   workflow_dispatch:
 
+# Read-only: this workflow only builds and tests, it never writes to the repo
+permissions:
+  contents: read
+
 jobs:
   # The shared code must also compile and pass its tests on iOS (needs a Mac, so it runs here)
   ios-tests:
