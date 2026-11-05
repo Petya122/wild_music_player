@@ -15,8 +15,16 @@ data class Song(
     val albumArtUri: String?,
     val folderName: String = "Music",
     /** Where the file is on the phone ("/storage/emulated/0/Music/song.mp3"), when known. */
-    val filePath: String? = null
+    val filePath: String? = null,
+    /** The track's place on its album as tagged: disc × 1000 + track ("1003" = disc 1, track 3); 0 = unknown. */
+    val trackNumber: Int = 0,
+    /** Release year from the tags; 0 = unknown. */
+    val year: Int = 0
 ) {
+    /** The folder the file is in ("/storage/emulated/0/Music/Rock"), when the path is known. */
+    val folderPath: String?
+        get() = filePath?.substringBeforeLast('/', "")?.takeIf { it.isNotEmpty() }
+
     /** True for YouTube tracks whose stream URL is resolved at play time by PlaybackService. */
     val isOnline: Boolean
         get() = isOnlineUri(contentUri)

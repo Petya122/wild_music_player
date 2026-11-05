@@ -6,8 +6,8 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
 }
 
-// Code shared by the Android app and (from v0.8.7) the iOS app.
-// iOS targets only compile on macOS; GitHub's macOS CI builds and tests them.
+// The app's shared code: data, playlists, settings and the Compose screens. It is a Kotlin
+// Multiplatform module with only the Android target for now (the iOS app was removed in v0.9.4).
 kotlin {
     androidLibrary {
         namespace = "com.wildmusicplayer.shared"
@@ -15,14 +15,6 @@ kotlin {
         minSdk = 26
         withHostTestBuilder {}
     }
-    // The iOS app links the shared code as a static framework named "Shared"
-    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-        target.binaries.framework {
-            baseName = "Shared"
-            isStatic = true
-        }
-    }
-
     jvmToolchain(17)
 
     sourceSets {

@@ -77,6 +77,8 @@ class PlaybackService : MediaSessionService() {
     // The song waiting to count as played (null = already counted, or nothing playing)
     private var playCountCandidate: Long? = null
 
+    private var crossfade: CrossfadeController? = null
+
     private val periodicSave = object : Runnable {
         override fun run() {
             saveQueue()
@@ -191,6 +193,7 @@ class PlaybackService : MediaSessionService() {
         val audioEffectsManager = com.wildmusicplayer.data.AudioEffectsManager.getInstance(this)
         audioEffectsManager.attachPlayer(player)
         SleepTimerManager.attach(player, audioEffectsManager)
+        crossfade = CrossfadeController(this, player, audioEffectsManager)
 
         player.addListener(playerListener)
 
@@ -217,6 +220,8 @@ class PlaybackService : MediaSessionService() {
         mainHandler.removeCallbacksAndMessages(null)
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
         SleepTimerManager.detach()
+        crossfade?.release()
+        crossfade = null
         serviceScope.cancel()
         PlayerWidget.markPaused(this)
         running = null
@@ -263,17 +268,14 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
-     * The car's RPT button switches between off and repeat-one, the only kind of repeat the radio shows
-     * (the Qashqai asks for "repeat all" when RPT is pressed, which it then doesn't show). Any other app
+     * The car's RPT button switches between off and repeat-one (see [outsideRepeatRequest]). Any other app
      * or device asking for repeat gets the same; the app's own repeat button keeps off / all / one.
      */
     private inner class CarRepeatPlayer(player: ExoPlayer) : ForwardingPlayer(player) {
         override fun setRepeatMode(repeatMode: Int) {
             val requester = mediaSession?.controllerForCurrentRequest?.packageName
             val fromOutside = requester != null && requester != packageName
-            super.setRepeatMode(
-                if (fromOutside && repeatMode != Player.REPEAT_MODE_OFF) Player.REPEAT_MODE_ONE else repeatMode
-            )
+            super.setRepeatMode(if (fromOutside) outsideRepeatRequest(this.repeatMode, repeatMode) else repeatMode)
         }
     }
 
@@ -399,6 +401,17 @@ class PlaybackService : MediaSessionService() {
         // The running service, for the widget's previous / next buttons (same process, main thread)
         @Volatile private var running: PlaybackService? = null
 
+        /**
+         * Play / pause for the Quick Settings tile. False when there's nothing loaded to play or pause
+         * (the player isn't running, or its queue is empty): the tile then asks for the last queue to resume.
+         */
+        fun togglePlayPause(): Boolean {
+            val player = running?.mediaSession?.player ?: return false
+            if (player.mediaItemCount == 0) return false
+            if (player.playWhenReady) player.pause() else player.play()
+            return true
+        }
+
         /** Skips in the playing queue; does nothing when the player isn't running (nothing to skip). */
         fun skip(next: Boolean) {
             val player = running?.mediaSession?.player ?: return
@@ -418,6 +431,18 @@ class PlaybackService : MediaSessionService() {
         private const val ACTION_TOGGLE_FAVORITE = "com.wildmusicplayer.TOGGLE_FAVORITE"
         private val FAVORITE_COMMAND = SessionCommand(ACTION_TOGGLE_FAVORITE, Bundle.EMPTY)
     }
+}
+
+/**
+ * What a repeat request from outside the app (the car's RPT button) becomes. The Qashqai's RPT only ever asks
+ * for "repeat all" or "off", and it decides by itself: "off" when repeat-all is on, otherwise "repeat all". It
+ * only shows RPT for repeat-one, so "repeat all" turns repeat-one on, and asking for it again while repeat-one
+ * is on is the second press: off. (v0.9.3 kept answering repeat-one, so RPT could never be switched off.)
+ */
+internal fun outsideRepeatRequest(current: Int, requested: Int): Int = when {
+    requested == Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_OFF
+    requested == Player.REPEAT_MODE_ALL && current == Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_OFF
+    else -> Player.REPEAT_MODE_ONE
 }
 
 /**

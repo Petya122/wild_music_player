@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The music library and what the user does with it: the song list, favorites, recently played,
- * playlists and starting playback. Shared by Android and iOS; the platform supplies the library and player.
+ * playlists and starting playback. The platform supplies the library and player.
  */
 class LibraryViewModel(
     private val library: MusicLibrary,

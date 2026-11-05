@@ -59,6 +59,14 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
     // The sleep timer's fade-out (1 = no fade)
     private var fadeFactor = 1f
 
+    // Crossfade: the next song fading in (1 = full volume)
+    private var crossfadeFactor = 1f
+
+    private val _crossfadeSeconds = MutableStateFlow(
+        prefs.getInt(KEY_CROSSFADE, 0).coerceIn(0, com.wildmusicplayer.platform.MAX_CROSSFADE_SECONDS)
+    )
+    override val crossfadeSeconds: StateFlow<Int> = _crossfadeSeconds.asStateFlow()
+
     private var player: ExoPlayer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var equalizerEffect: Equalizer? = null
@@ -142,6 +150,28 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         applyEqualizer()
     }
 
+    override fun setCrossfadeSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(0, com.wildmusicplayer.platform.MAX_CROSSFADE_SECONDS)
+        _crossfadeSeconds.value = clamped
+        prefs.edit().putInt(KEY_CROSSFADE, clamped).apply()
+    }
+
+    /** Called by the crossfade while the next song fades in. */
+    fun setCrossfadeFactor(factor: Float) {
+        crossfadeFactor = factor.coerceIn(0f, 1f)
+        applyVolumeToPlayer()
+    }
+
+    /**
+     * The volume the song playing now gets, before any crossfade: the user's volume, mute, normalization
+     * and the sleep timer's fade. The crossfade plays the end of this song at it while the next one starts.
+     */
+    fun songVolume(): Float {
+        val cut = trackGainDb.coerceAtMost(0.0)
+        val normalizationScale = 10.0.pow(cut / 20).toFloat()
+        return if (_isMuted.value) 0.0f else _volume.value * normalizationScale * fadeFactor
+    }
+
     /** Called by the sleep timer while it fades the music out. */
     fun setFadeFactor(factor: Float) {
         fadeFactor = factor.coerceIn(0f, 1f)
@@ -155,12 +185,9 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         applyDspEnhancements()
     }
 
+    // Turning a loud song down is done with the player volume (clean, no processing)
     private fun applyVolumeToPlayer() {
-        // Turning a loud song down is done with the player volume (clean, no processing)
-        val cut = trackGainDb.coerceAtMost(0.0)
-        val normalizationScale = 10.0.pow(cut / 20).toFloat()
-        val targetVolume = if (_isMuted.value) 0.0f else _volume.value * normalizationScale * fadeFactor
-        player?.volume = targetVolume
+        player?.volume = songVolume() * crossfadeFactor
     }
 
     private fun setupLoudnessEnhancer(audioSessionId: Int) {
@@ -263,6 +290,7 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         private const val KEY_BOOST_DB = "pref_volume_boost_db"
         private const val KEY_NORMALIZATION = "pref_audio_normalization"
         private const val KEY_EQUALIZER = "pref_equalizer"
+        private const val KEY_CROSSFADE = "pref_crossfade_seconds"
 
         // Matches the largest preset offered in SoundSettingsSheet
         const val MAX_BOOST_DB = 12

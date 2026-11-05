@@ -22,7 +22,14 @@ interface AudioEffects {
     fun setEqualizerEnabled(enabled: Boolean) {}
     fun useEqualizerPreset(index: Int) {}
     fun setEqualizerBandLevel(band: Int, levelMb: Int) {}
+
+    /** How many seconds songs fade into each other; 0 = off. Null where crossfade isn't supported. */
+    val crossfadeSeconds: StateFlow<Int>? get() = null
+    fun setCrossfadeSeconds(seconds: Int) {}
 }
+
+/** The longest crossfade offered. */
+const val MAX_CROSSFADE_SECONDS = 12
 
 private val NO_EQUALIZER: StateFlow<EqualizerState?> = MutableStateFlow(null).asStateFlow()
 

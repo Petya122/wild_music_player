@@ -11,7 +11,7 @@ fun normalizeForSearch(text: String): String =
 
 /**
  * Splits [text] into words of letters and numbers (plus any [extraWordChars]), dropping everything else.
- * Character checks instead of `\p{L}` regex classes, which iOS's regex engine doesn't support.
+ * Character checks instead of `\p{L}` regex classes, so it works the same on every Kotlin platform.
  */
 fun wordsOf(text: String, extraWordChars: String = ""): List<String> {
     val words = mutableListOf<String>()

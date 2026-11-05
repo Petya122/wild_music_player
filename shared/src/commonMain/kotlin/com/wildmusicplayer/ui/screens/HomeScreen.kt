@@ -22,6 +22,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.wildmusicplayer.data.listeningStats
+import com.wildmusicplayer.ui.PlatformBackHandler
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
@@ -55,8 +63,24 @@ fun HomeScreen(
     onNavigateToSongs: () -> Unit,
     onNavigateToPlaylists: () -> Unit,
     onRemoveRecentSong: (Long) -> Unit = {},
-    onClearRecentSongs: () -> Unit = {}
+    onClearRecentSongs: () -> Unit = {},
+    // Listening stats: how often each song was played, and playing a top entry
+    playCounts: Map<Long, Int> = emptyMap(),
+    onPlayList: (List<Song>, shuffle: Boolean) -> Unit = { list, _ -> list.firstOrNull()?.let { onSongClick(it, list) } }
 ) {
+    var showStats by rememberSaveable { mutableStateOf(false) }
+    val stats = remember(allSongs, playCounts) { listeningStats(allSongs, playCounts) }
+    PlatformBackHandler(enabled = showStats) { showStats = false }
+    if (showStats) {
+        ListeningStatsScreen(
+            stats = stats,
+            bottomPadding = bottomPadding,
+            onBack = { showStats = false },
+            onPlay = { entry -> onPlayList(entry.songs, false) }
+        )
+        return
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = bottomPadding)
@@ -243,6 +267,15 @@ fun HomeScreen(
                     onClick = onNavigateToPlaylists
                 )
             }
+            Spacer(modifier = Modifier.height(12.dp))
+            QuickNavCard(
+                title = "Listening Stats",
+                subtitle = if (stats.totalPlays == 0) "Your top songs, artists and albums"
+                    else "${stats.totalPlays} plays • ≈ ${formatTotalDuration(stats.listenedMs)} listened",
+                icon = Icons.Default.BarChart,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                onClick = { showStats = true }
+            )
         }
     }
 }

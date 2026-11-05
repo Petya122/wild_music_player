@@ -4,7 +4,7 @@ import com.wildmusicplayer.data.normalizeForSearch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-// Runs on Android and iOS, so both accent-stripping implementations are checked
+// Checks the accent stripping used for search and song matching
 class TextNormalizationTest {
 
     @Test

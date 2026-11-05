@@ -35,7 +35,9 @@ class AudioRepository(private val context: Context) : MusicLibrary {
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DATA
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.YEAR
         ).apply {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 add(MediaStore.Audio.Media.RELATIVE_PATH)
@@ -67,6 +69,8 @@ class AudioRepository(private val context: Context) : MusicLibrary {
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             val dataColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+            val trackColumn = cursor.getColumnIndex(MediaStore.Audio.Media.TRACK)
+            val yearColumn = cursor.getColumnIndex(MediaStore.Audio.Media.YEAR)
             val relativePathColumn = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
             } else -1
@@ -121,7 +125,9 @@ class AudioRepository(private val context: Context) : MusicLibrary {
                         contentUri = contentUri.toString(),
                         albumArtUri = albumArtUri?.toString(),
                         folderName = folderName,
-                        filePath = rawData?.takeIf { it.isNotBlank() }
+                        filePath = rawData?.takeIf { it.isNotBlank() },
+                        trackNumber = if (trackColumn >= 0) cursor.getInt(trackColumn).coerceAtLeast(0) else 0,
+                        year = if (yearColumn >= 0) cursor.getInt(yearColumn).coerceAtLeast(0) else 0
                     )
                 )
             }

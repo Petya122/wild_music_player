@@ -56,11 +56,15 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import com.wildmusicplayer.lyrics.LyricsRepository
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -110,9 +114,19 @@ fun NowPlayingScreen(
     val lyricsRepository = LocalLyrics.current
     var showLyrics by remember { mutableStateOf(false) }
     // Looked up only while the lyrics are showing; null while loading
-    val lyrics by produceState<LyricsResult?>(null, song.mediaId, showLyrics) {
-        value = null
-        if (showLyrics && lyricsRepository != null) value = lyricsRepository.lyricsFor(song)
+    var lyrics by remember(song.mediaId) { mutableStateOf<LyricsResult?>(null) }
+    LaunchedEffect(song.mediaId, showLyrics) {
+        lyrics = null
+        if (showLyrics && lyricsRepository != null) lyrics = lyricsRepository.lyricsFor(song)
+    }
+    val lyricsScope = rememberCoroutineScope()
+    // The user's timing fix: shown at once, saved with the song's lyrics
+    val onLyricsTimingChange: ((Long) -> Unit)? = lyricsRepository?.let { repository ->
+        { offsetMs ->
+            val clamped = offsetMs.coerceIn(-LyricsRepository.MAX_OFFSET_MS, LyricsRepository.MAX_OFFSET_MS)
+            (lyrics as? LyricsResult.Synced)?.let { lyrics = it.copy(offsetMs = clamped) }
+            lyricsScope.launch { repository.setTimingOffset(song, clamped) }
+        }
     }
     var showSoundSheet by remember { mutableStateOf(false) }
 
@@ -241,7 +255,8 @@ fun NowPlayingScreen(
                             onSeekTo = onSeekTo,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            onTimingChange = onLyricsTimingChange
                         )
                     } else {
                         SongThumbnail(

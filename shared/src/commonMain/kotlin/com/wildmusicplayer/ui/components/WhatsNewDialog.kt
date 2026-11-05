@@ -38,6 +38,19 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.4", listOf(
+            ChangelogEntry("💿", "Albums & Artists", "Songs tab → Albums shows your album covers in a grid, Artists lists everyone in your library. Open one to play it in order or shuffled. Albums play in their track order."),
+            ChangelogEntry("📁", "Folders", "Songs tab → Folders lists the folders your music is in, with where they are on the phone. Two folders with the same name (like two \"Music\" folders) are now kept apart, also in Playlists."),
+            ChangelogEntry("🌊", "Crossfade", "Sound settings (in Now Playing) → Crossfade: songs fade into each other, 1 to 12 seconds. Off by default. Not used with repeat-one, online streams, or the sleep timer's \"after this song\"."),
+            ChangelogEntry("⚡", "Quick Settings Tile", "Pull down the notification panel twice, tap ✏️ (edit) and drag \"Wild Music\" in. Tap it to play or pause; it shows the song and lights up while music plays."),
+            ChangelogEntry("📊", "Listening Stats", "Home → Listening Stats: how many plays, about how long you listened, and your top songs, artists and albums. Tap one to play it."),
+            ChangelogEntry("ℹ️", "Song Info", "Long-press a song, or ⋮ → Song info: format, bitrate, sample rate, file size, where the file is, and how often you played it."),
+            ChangelogEntry("🎤", "Fix Lyrics Timing", "Lyrics a bit early or late? In the lyrics view, − 0.5 s / + 0.5 s moves every line, or long-press a line the moment you hear it start and the lyrics line up to it. Saved for that song. Lyrics also pick the version closest to your file's length."),
+            ChangelogEntry("🔁", "Car RPT Turns Off Again", "Pressing RPT on the car radio now switches between repeat this song and repeat off. In 0.9.3 a second press kept repeat on."),
+            ChangelogEntry("🍎", "iPhone Version Removed", "The unfinished iPhone version is gone from the project for now, so all the work goes into the Android app.")
+        )
+    ),
+    ReleaseNotes(
         "0.9.3", listOf(
             ChangelogEntry("🔁", "Car RPT Button", "The RPT button on the car radio now switches between repeat off and repeat this song, which is what the RPT light shows. Repeat-all is still on the app's own repeat button."),
             ChangelogEntry("🚗", "RPT After Reconnecting", "With repeat-one on, RPT comes back on the car display after it reconnects. The app now waits 2 seconds between the changes, slow enough for the radio, and no longer pauses the music for it.")

@@ -44,6 +44,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-pressing the Quick Settings tile opens the app -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
         </activity>
 
         <!-- Background MediaSession Playback Service for Bluetooth & Car AVRCP -->
@@ -77,6 +81,21 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/wmp_widget_info" />
         </receiver>
+
+        <!-- Quick Settings tile: play / pause, shows the song -->
+        <service
+            android:name=".tile.PlayerTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_music"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
 
         <!-- Background Song Download Service (persists until completion, then shuts off) -->
         <service

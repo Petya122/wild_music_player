@@ -88,6 +88,34 @@ class LyricsTest {
     }
 
     @Test
+    fun timingFixIsSavedWithTheLyricsAndKeptOffline() = runTest {
+        val storage = FakeFileStore()
+        val repo = repository(storage) {
+            HttpResult(200, """{"duration":319,"plainLyrics":"Hey","syncedLyrics":"[00:01.00]Hey"}""")
+        }
+        assertEquals(0L, (repo.lyricsFor(song) as LyricsResult.Synced).offsetMs)
+        repo.setTimingOffset(song, 1_500)
+        val offline = repository(storage, offline = true) { error("no network calls expected") }
+        assertEquals(LyricsResult.Synced(listOf(LyricLine(1_000, "Hey")), offsetMs = 1_500), offline.lyricsFor(song))
+        // Limited to half a minute either way
+        repo.setTimingOffset(song, -90_000)
+        assertEquals(-30_000L, (offline.lyricsFor(song) as LyricsResult.Synced).offsetMs)
+    }
+
+    @Test
+    fun searchPicksTheVersionClosestInLength() = runTest {
+        val repo = repository(FakeFileStore()) { url ->
+            if ("/get?" in url) HttpResult(404, "") else HttpResult(
+                200,
+                """[{"duration":322.0,"syncedLyrics":"[00:05.00]Three seconds longer"},
+                   {"duration":319.0,"syncedLyrics":"[00:04.00]Same length"},
+                   {"duration":200.0,"syncedLyrics":"[00:01.00]Radio edit"}]"""
+            )
+        }
+        assertEquals(LyricsResult.Synced(listOf(LyricLine(4_000, "Same length"))), repo.lyricsFor(song))
+    }
+
+    @Test
     fun busyServerIsAskedAgain() = runTest {
         var calls = 0
         val repo = repository(FakeFileStore()) {

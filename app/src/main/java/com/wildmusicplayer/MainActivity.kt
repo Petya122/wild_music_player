@@ -12,6 +12,8 @@ import com.wildmusicplayer.ui.LocalSleepTimer
 import com.wildmusicplayer.ui.screens.rememberPlaylistExporter
 import com.wildmusicplayer.ui.LocalLyrics
 import com.wildmusicplayer.ui.LocalArtworkColors
+import com.wildmusicplayer.ui.LocalSongInfo
+import com.wildmusicplayer.data.AndroidSongInfo
 import com.wildmusicplayer.ui.AndroidArtworkColors
 import com.wildmusicplayer.data.lyricsRepository
 import com.wildmusicplayer.service.SleepTimerManager
@@ -195,7 +197,8 @@ class MainActivity : ComponentActivity() {
                 LocalQueueActions provides QueueActions(controllerManager::playNext, controllerManager::addToQueue),
                 LocalSleepTimer provides SleepTimerManager,
                 LocalLyrics provides lyricsRepository(appContext),
-                LocalArtworkColors provides remember { AndroidArtworkColors(appContext) }
+                LocalArtworkColors provides remember { AndroidArtworkColors(appContext) },
+                LocalSongInfo provides remember { AndroidSongInfo(appContext, libraryViewModel.playlists) }
             ) {
             WildMusicPlayerTheme(themeMode = currentTheme, accent = accent, wallpaperScheme = wallpaperScheme) {
                 // Status bar icons follow the app's own theme: dark icons on the light theme, even when
@@ -630,7 +633,9 @@ fun MusicPlayerApp(
                                 },
                                 onClearRecentSongs = {
                                     playlistRepository.clearRecentlyPlayed()
-                                }
+                                },
+                                playCounts = playCounts,
+                                onPlayList = playPlaylist
                             )
                         }
                         NavigationTab.SONGS -> {
@@ -643,7 +648,9 @@ fun MusicPlayerApp(
                                 onShuffleAll = shuffleAll,
                                 onToggleFavorite = { playlistRepository.toggleFavorite(it) },
                                 onDeleteSong = requestDeleteSong,
-                                onAddToPlaylist = { songForPlaylistPicker = it }
+                                onAddToPlaylist = { songForPlaylistPicker = it },
+                                onPlayInList = playSong,
+                                onPlayGroup = playPlaylist
                             )
                         }
                         NavigationTab.SEARCH -> {

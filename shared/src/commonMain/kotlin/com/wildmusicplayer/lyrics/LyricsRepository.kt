@@ -45,9 +45,22 @@ class LyricsRepository(
         if (isOffline()) return saved?.toResult() ?: LyricsResult.Offline
 
         val found = lookUp(query) ?: return saved?.toResult() ?: LyricsResult.Failed
-        val toSave = found.copy(savedAt = now())
+        val toSave = found.copy(savedAt = now(), offsetMs = saved?.offsetMs ?: 0L)
         withContext(Dispatchers.Default) { cache.writeText(fileName, json.encodeToString(SavedLyrics.serializer(), toSave)) }
         return toSave.toResult()
+    }
+
+    /**
+     * Saves the user's timing fix for [song]'s synced lyrics (see [LyricsResult.Synced.offsetMs]), kept with
+     * its saved lyrics. Limited to ±[MAX_OFFSET_MS].
+     */
+    suspend fun setTimingOffset(song: Song, offsetMs: Long) = withContext(Dispatchers.Default) {
+        val fileName = LyricsQuery.of(song).cacheFileName()
+        val saved = cache.readText(fileName)
+            ?.let { runCatching { json.decodeFromString(SavedLyrics.serializer(), it) }.getOrNull() }
+            ?: return@withContext
+        val updated = saved.copy(offsetMs = offsetMs.coerceIn(-MAX_OFFSET_MS, MAX_OFFSET_MS))
+        cache.writeText(fileName, json.encodeToString(SavedLyrics.serializer(), updated))
     }
 
     /** The best lyrics LRCLIB has (an empty [SavedLyrics] when it has none), or null when it couldn't be asked. */
@@ -68,8 +81,10 @@ class LyricsRepository(
         val tracks = runCatching { json.decodeFromString(ListSerializer(LrclibTrack.serializer()), search.body) }
             .getOrDefault(emptyList())
             .filter { it.hasLyrics }
-        val best = tracks.firstOrNull { query.lengthMatches(it) && it.syncedLyrics != null }
-            ?: tracks.firstOrNull { query.lengthMatches(it) }
+        // The version closest in length to the file, synced lyrics first
+        val sameLength = tracks.filter { query.lengthMatches(it) }.sortedBy { query.lengthDifference(it) }
+        val best = sameLength.firstOrNull { it.syncedLyrics != null }
+            ?: sameLength.firstOrNull()
             ?: tracks.firstOrNull()
         return best?.toSaved(query) ?: SavedLyrics()
     }
@@ -94,6 +109,7 @@ class LyricsRepository(
 
     companion object {
         private const val BUSY_RETRY_MS = 1_500L
+        const val MAX_OFFSET_MS = 30_000L
         private const val RETRY_NOT_FOUND_MS = 7 * 24 * 60 * 60 * 1000L
         private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
     }
@@ -118,6 +134,9 @@ internal data class LyricsQuery(val title: String, val artist: String, val album
         val length = track.duration ?: return durationSec == 0L
         return durationSec == 0L || abs(length - durationSec) <= LENGTH_TOLERANCE_SEC
     }
+
+    fun lengthDifference(track: LrclibTrack): Double =
+        track.duration?.let { abs(it - durationSec) } ?: Double.MAX_VALUE
 
     fun cacheFileName(): String {
         val key = "${artist.lowercase()}|${title.lowercase()}|$durationSec"
@@ -172,14 +191,16 @@ internal data class SavedLyrics(
     val synced: String? = null,
     val plain: String? = null,
     val instrumental: Boolean = false,
-    val savedAt: Long = 0L
+    val savedAt: Long = 0L,
+    /** The user's timing fix (see [LyricsResult.Synced.offsetMs]). */
+    val offsetMs: Long = 0L
 ) {
     val hasAnswer: Boolean get() = instrumental || !synced.isNullOrBlank() || !plain.isNullOrBlank()
 
     fun toResult(): LyricsResult {
         val lines = synced?.let { parseLrc(it) }.orEmpty()
         return when {
-            lines.isNotEmpty() -> LyricsResult.Synced(lines)
+            lines.isNotEmpty() -> LyricsResult.Synced(lines, offsetMs)
             !plain.isNullOrBlank() -> LyricsResult.Plain(plain.trim())
             instrumental -> LyricsResult.Instrumental
             else -> LyricsResult.NotFound

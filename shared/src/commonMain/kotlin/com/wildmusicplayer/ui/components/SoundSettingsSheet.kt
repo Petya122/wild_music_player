@@ -28,6 +28,11 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.wildmusicplayer.platform.MAX_CROSSFADE_SECONDS
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -298,9 +303,57 @@ fun SoundSettingsSheet(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(16.dp))
 
+            audioEffectsManager.crossfadeSeconds?.let { crossfade ->
+                CrossfadeSection(crossfade.collectAsState().value, audioEffectsManager::setCrossfadeSeconds)
+                Spacer(modifier = Modifier.height(20.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             EqualizerSection(equalizer, audioEffectsManager)
         }
     }
+}
+
+/** Off, or 1-12 seconds of the next song fading in while the current one fades out. */
+@Composable
+private fun CrossfadeSection(seconds: Int, onChange: (Int) -> Unit) {
+    var dragged by remember(seconds) { mutableFloatStateOf(seconds.toFloat()) }
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Default.Tune,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Crossfade",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Songs fade into each other. Not with repeat-one, online streams or \"after this song\".",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+        Text(
+            text = dragged.roundToInt().let { if (it == 0) "Off" else "$it s" },
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (dragged.roundToInt() == 0) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
+        )
+    }
+    Slider(
+        value = dragged,
+        onValueChange = { dragged = it },
+        onValueChangeFinished = { onChange(dragged.roundToInt()) },
+        valueRange = 0f..MAX_CROSSFADE_SECONDS.toFloat(),
+        steps = MAX_CROSSFADE_SECONDS - 1
+    )
 }
 
 /** On/off, the phone's presets as chips, and a slider per band (which turns the curve into "Custom"). */

@@ -5,12 +5,12 @@ import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.model.Song
 import kotlinx.coroutines.flow.StateFlow
 
-/** The songs on the device: MediaStore on Android, the app's Documents folder on iOS. */
+/** The songs on the device (MediaStore on Android). */
 interface MusicLibrary {
     suspend fun loadSongs(filterShortAudio: Boolean, filterRecordings: Boolean): List<Song>
 }
 
-/** Starts and controls playback: Media3 on Android, AVPlayer on iOS. */
+/** Starts and controls playback (Media3 on Android). */
 interface PlayerController {
     val currentSong: StateFlow<Song?>
     val isPlaying: StateFlow<Boolean>
@@ -73,7 +73,7 @@ object RepeatMode {
 /** Why a download can't start right now. */
 enum class DownloadBlock { OFFLINE_MODE, NO_NETWORK, METERED }
 
-/** Background downloads of online playlist tracks. Android only: iOS doesn't download from YouTube. */
+/** Background downloads of online playlist tracks. */
 interface TrackDownloader {
     /** Progress 0..1 of each track downloading right now, by track ID. */
     val activeDownloads: StateFlow<Map<String, Float>>

@@ -1,7 +1,7 @@
 package com.wildmusicplayer.platform
 
 /**
- * Small key/value settings: SharedPreferences on Android, NSUserDefaults on iOS.
+ * Small key/value settings (SharedPreferences on Android).
  * Each instance is one named group (one SharedPreferences file).
  */
 interface KeyValueStore {

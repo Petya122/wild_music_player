@@ -5,7 +5,11 @@ data class LyricLine(val timeMs: Long, val text: String)
 
 /** What the lyrics view shows for a song. */
 sealed interface LyricsResult {
-    data class Synced(val lines: List<LyricLine>) : LyricsResult
+    /**
+     * [offsetMs] is the user's own timing fix for this song: positive shows every line later, negative
+     * earlier. The lines keep their original times; the view adds the offset.
+     */
+    data class Synced(val lines: List<LyricLine>, val offsetMs: Long = 0L) : LyricsResult
     data class Plain(val text: String) : LyricsResult
     data object Instrumental : LyricsResult
     data object NotFound : LyricsResult

@@ -1,6 +1,13 @@
 package com.wildmusicplayer.ui.components
 
 import androidx.compose.foundation.clickable
+import com.wildmusicplayer.ui.LocalShowMessage
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,6 +42,9 @@ import kotlin.time.TimeSource
 /**
  * The lyrics in place of the cover. Synced lyrics follow the song with the current line lit and kept
  * in view; tapping a line jumps there. Plain lyrics just scroll. [lyrics] null = still loading.
+ *
+ * Timing fixes ([onTimingChange] gets the new offset): the -/+ buttons move every line half a second,
+ * and long-pressing a line when its words start moves the lyrics so that line starts right now.
  */
 @Composable
 fun LyricsView(
@@ -42,12 +52,14 @@ fun LyricsView(
     currentPosition: Long,
     isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onTimingChange: ((offsetMs: Long) -> Unit)? = null
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         when (lyrics) {
             null -> CircularProgressIndicator()
-            is LyricsResult.Synced -> SyncedLyrics(lyrics.lines, currentPosition, isPlaying, onSeekTo)
+            is LyricsResult.Synced ->
+                SyncedLyrics(lyrics.lines, lyrics.offsetMs, currentPosition, isPlaying, onSeekTo, onTimingChange)
             is LyricsResult.Plain -> Text(
                 text = lyrics.text,
                 style = MaterialTheme.typography.bodyLarge,
@@ -80,10 +92,13 @@ private fun Message(text: String) {
 @Composable
 private fun SyncedLyrics(
     lines: List<LyricLine>,
+    offsetMs: Long,
     currentPosition: Long,
     isPlaying: Boolean,
-    onSeekTo: (Long) -> Unit
+    onSeekTo: (Long) -> Unit,
+    onTimingChange: ((Long) -> Unit)?
 ) {
+    val showMessage = LocalShowMessage.current
     // The player reports its position twice a second; count between reports so lines change on time
     var position by remember { mutableLongStateOf(currentPosition) }
     LaunchedEffect(currentPosition, isPlaying) {
@@ -96,7 +111,8 @@ private fun SyncedLyrics(
         }
     }
 
-    val current = currentLineIndex(lines, position)
+    // A positive offset shows the lines later: compare them with an earlier moment of the song
+    val current = currentLineIndex(lines, position - offsetMs)
     val listState = rememberLazyListState()
     LaunchedEffect(current) {
         if (current >= 0 && !listState.isScrollInProgress) {
@@ -104,10 +120,27 @@ private fun SyncedLyrics(
         }
     }
 
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (onTimingChange != null) TimingBar(offsetMs, onTimingChange)
+        LyricLines(lines, current, offsetMs, position, listState, onSeekTo, onTimingChange, showMessage)
+    }
+}
+
+@Composable
+private fun ColumnScope.LyricLines(
+    lines: List<LyricLine>,
+    current: Int,
+    offsetMs: Long,
+    position: Long,
+    listState: LazyListState,
+    onSeekTo: (Long) -> Unit,
+    onTimingChange: ((Long) -> Unit)?,
+    showMessage: (String) -> Unit
+) {
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 24.dp),
+        modifier = Modifier.fillMaxWidth().weight(1f),
+        contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         itemsIndexed(lines) { index, line ->
@@ -124,9 +157,55 @@ private fun SyncedLyrics(
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onSeekTo(line.timeMs) }
+                    .combinedClickable(
+                        onClick = { onSeekTo(line.timeMs + offsetMs) },
+                        // Long-press when the words start: this line, and every other, moves to fit
+                        onLongClick = onTimingChange?.let { change ->
+                            {
+                                change(timingOffsetFor(line, position))
+                                showMessage("Lyrics timing adjusted to this line")
+                            }
+                        }
+                    )
                     .padding(horizontal = 20.dp, vertical = 2.dp)
             )
         }
     }
+}
+
+/** "- 0.5 s   Timing +1.5 s · reset   + 0.5 s", with a hint about long-pressing a line. */
+@Composable
+private fun TimingBar(offsetMs: Long, onTimingChange: (Long) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        TextButton(onClick = { onTimingChange(offsetMs - TIMING_STEP_MS) }) { Text("\u2212 0.5 s") }
+        TextButton(onClick = { onTimingChange(0L) }, enabled = offsetMs != 0L) {
+            Text(
+                text = if (offsetMs == 0L) "Timing: as found" else "Timing ${formatOffset(offsetMs)} \u00b7 reset",
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+        TextButton(onClick = { onTimingChange(offsetMs + TIMING_STEP_MS) }) { Text("+ 0.5 s") }
+    }
+    Text(
+        text = "Long-press a line when you hear it start to line them all up",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.outline,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    )
+}
+
+private const val TIMING_STEP_MS = 500L
+
+/** The offset that makes [line] start at [positionMs], in whole tenths of a second. */
+internal fun timingOffsetFor(line: LyricLine, positionMs: Long): Long = ((positionMs - line.timeMs) / 100) * 100
+
+/** 1500 -> "+1.5 s", -500 -> "\u22120.5 s". */
+internal fun formatOffset(offsetMs: Long): String {
+    val tenths = kotlin.math.abs(offsetMs) / 100
+    return (if (offsetMs < 0) "\u2212" else "+") + "${tenths / 10}.${tenths % 10} s"
 }

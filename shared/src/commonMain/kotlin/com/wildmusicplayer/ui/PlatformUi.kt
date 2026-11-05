@@ -7,13 +7,13 @@ import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.platform.AudioEffects
 import com.wildmusicplayer.platform.SleepTimer
 
-/** Shows a short message: a toast on Android, a snackbar on iOS. Provided by each app. */
+/** Shows a short message (a toast on Android). Provided by the app. */
 val LocalShowMessage = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 /** The player's volume and effects controls. Provided by each app. */
 val LocalAudioEffects = staticCompositionLocalOf<AudioEffects> { error("LocalAudioEffects not provided") }
 
-/** Handles the system Back button/gesture while [enabled]. iOS has no Back button, so there it does nothing. */
+/** Handles the system Back button/gesture while [enabled]. */
 @Composable
 expect fun PlatformBackHandler(enabled: Boolean = true, onBack: () -> Unit)
 
@@ -37,3 +37,6 @@ fun interface ArtworkColors {
 }
 
 val LocalArtworkColors = staticCompositionLocalOf<ArtworkColors?> { null }
+
+/** File details for the Song info sheet; null hides "Song info" in song menus. Provided by each app. */
+val LocalSongInfo = staticCompositionLocalOf<com.wildmusicplayer.platform.SongInfoSource?> { null }

@@ -26,6 +26,7 @@ import com.wildmusicplayer.R
 import com.wildmusicplayer.data.AppSettings
 import com.wildmusicplayer.data.getInstance
 import com.wildmusicplayer.service.PlaybackService
+import com.wildmusicplayer.tile.PlayerTileService
 import com.wildmusicplayer.ui.theme.AccentColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,12 +86,24 @@ class PlayerWidget : AppWidgetProvider() {
                 .putBoolean(KEY_PLAYING, isPlaying)
                 .apply()
             renderAll(context)
+            PlayerTileService.refresh(context)
+        }
+
+        /** The last song and play state reported by PlaybackService (also used by the Quick Settings tile). */
+        fun nowPlaying(context: Context): NowPlaying {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return NowPlaying(
+                title = prefs.getString(KEY_TITLE, null),
+                artist = prefs.getString(KEY_ARTIST, null),
+                isPlaying = prefs.getBoolean(KEY_PLAYING, false)
+            )
         }
 
         /** The player stopped running: keep showing the song, with a play button. */
         fun markPaused(context: Context) {
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_PLAYING, false).apply()
             renderAll(context)
+            PlayerTileService.refresh(context)
         }
 
         /** Draws every placed widget again, e.g. after the accent color changed. */
@@ -206,6 +219,8 @@ class PlayerWidget : AppWidgetProvider() {
             return PendingIntent.getBroadcast(context, keyCode, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
     }
+
+    data class NowPlaying(val title: String?, val artist: String?, val isPlaying: Boolean)
 
     private data class WidgetState(val title: String?, val artist: String?, val artworkUri: String?, val isPlaying: Boolean)
 }

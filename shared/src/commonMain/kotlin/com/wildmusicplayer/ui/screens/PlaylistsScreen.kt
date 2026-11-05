@@ -98,6 +98,7 @@ import coil3.request.ImageRequest
 import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.data.Playlist
+import com.wildmusicplayer.data.foldersOf
 import com.wildmusicplayer.data.isDownloadedCopyOf
 import com.wildmusicplayer.model.Song
 
@@ -176,11 +177,9 @@ fun PlaylistsScreen(
         allSongs.filter { favoriteSongIds.contains(it.id) }
     }
 
-    // Auto-organize all songs by their parent device folder
+    // Auto-organize all songs by their folder on the phone (by full path: two "Music" folders stay apart)
     val folderPlaylists = remember(allSongs) {
-        allSongs.groupBy { it.folderName }
-            .map { (folder, songs) -> folder to songs }
-            .sortedByDescending { it.second.size }
+        foldersOf(allSongs).sortedByDescending { it.songs.size }
     }
 
     when (val selection = selectedPlaylist) {
@@ -351,13 +350,14 @@ fun PlaylistsScreen(
                         )
                     }
 
-                    items(folderPlaylists, key = { "folder_${it.first}" }) { (folderName, songs) ->
+                    items(folderPlaylists, key = { "folder_${it.key}" }) { folder ->
+                        val count = folder.songs.size
                         PlaylistCard(
-                            title = folderName,
-                            subtitle = "${songs.size} ${if (songs.size == 1) "track" else "tracks"}",
+                            title = folder.title,
+                            subtitle = "${folder.subtitle} • $count ${if (count == 1) "track" else "tracks"}",
                             icon = Icons.Default.Folder,
                             iconTint = MaterialTheme.colorScheme.tertiary,
-                            onClick = { selectedPlaylist = PlaylistSelection.Folder(folderName, songs) }
+                            onClick = { selectedPlaylist = PlaylistSelection.Folder(folder.title, folder.songs) }
                         )
                     }
                 }
@@ -711,7 +711,9 @@ fun PlaylistsScreen(
                                     .verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                folderPlaylists.forEach { (folderName, songs) ->
+                                folderPlaylists.forEach { folder ->
+                                    val folderName = folder.title
+                                    val songs = folder.songs
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -751,7 +753,7 @@ fun PlaylistsScreen(
                                                         overflow = TextOverflow.Ellipsis
                                                     )
                                                     Text(
-                                                        text = "${songs.size} tracks",
+                                                        text = "${folder.subtitle} • ${songs.size} tracks",
                                                         style = MaterialTheme.typography.bodySmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )

@@ -1,6 +1,10 @@
 package com.wildmusicplayer.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.outlined.Info
+import com.wildmusicplayer.ui.LocalSongInfo
+import com.wildmusicplayer.ui.components.SongInfoDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +44,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.wildmusicplayer.data.albumsOf
+import com.wildmusicplayer.data.artistsOf
+import com.wildmusicplayer.data.foldersOf
+import com.wildmusicplayer.data.withKey
+import com.wildmusicplayer.ui.PlatformBackHandler
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,9 +78,69 @@ fun SongsScreen(
     onShuffleAll: () -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onDeleteSong: ((Song) -> Unit)? = null,
-    onAddToPlaylist: ((Song) -> Unit)? = null
+    onAddToPlaylist: ((Song) -> Unit)? = null,
+    // Albums / Artists / Folders: play a song within its group, or the whole group
+    onPlayInList: (Song, List<Song>) -> Unit = { song, _ -> onSongClick(song) },
+    onPlayGroup: (List<Song>, shuffle: Boolean) -> Unit = { list, _ -> list.firstOrNull()?.let(onSongClick) }
 ) {
-    var sortOrder by remember { mutableStateOf(SongSortOrder.DEFAULT) }
+    var viewName by rememberSaveable { mutableStateOf(LibraryView.SONGS.name) }
+    val view = LibraryView.entries.firstOrNull { it.name == viewName } ?: LibraryView.SONGS
+    var openGroupKey by rememberSaveable { mutableStateOf<String?>(null) }
+    val groups = remember(songs, view) {
+        when (view) {
+            LibraryView.SONGS -> emptyList()
+            LibraryView.ALBUMS -> albumsOf(songs)
+            LibraryView.ARTISTS -> artistsOf(songs)
+            LibraryView.FOLDERS -> foldersOf(songs)
+        }
+    }
+    val openGroup = groups.withKey(openGroupKey)
+
+    // Back from an album / artist / folder returns to the list, not to Home
+    PlatformBackHandler(enabled = openGroup != null) { openGroupKey = null }
+
+    if (openGroup != null) {
+        SongGroupDetail(
+            group = openGroup,
+            favoriteSongIds = favoriteSongIds,
+            currentPlayingSongId = currentPlayingSongId,
+            bottomPadding = bottomPadding,
+            onBack = { openGroupKey = null },
+            onSongClick = { song -> onPlayInList(song, openGroup.songs) },
+            onPlay = { shuffle -> onPlayGroup(openGroup.songs, shuffle) },
+            onToggleFavorite = onToggleFavorite,
+            onDeleteSong = onDeleteSong,
+            onAddToPlaylist = onAddToPlaylist
+        )
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        LibraryViewChips(selected = view, onSelect = { viewName = it.name })
+        when (view) {
+            LibraryView.SONGS -> AllSongsList(
+                songs, favoriteSongIds, currentPlayingSongId, bottomPadding,
+                onSongClick, onShuffleAll, onToggleFavorite, onDeleteSong, onAddToPlaylist
+            )
+            LibraryView.ALBUMS -> AlbumGrid(groups, bottomPadding) { openGroupKey = it.key }
+            LibraryView.ARTISTS, LibraryView.FOLDERS -> GroupList(groups, bottomPadding) { openGroupKey = it.key }
+        }
+    }
+}
+
+@Composable
+private fun AllSongsList(
+    songs: List<Song>,
+    favoriteSongIds: Set<Long>,
+    currentPlayingSongId: Long?,
+    bottomPadding: Dp,
+    onSongClick: (Song) -> Unit,
+    onShuffleAll: () -> Unit,
+    onToggleFavorite: (Long) -> Unit,
+    onDeleteSong: ((Song) -> Unit)?,
+    onAddToPlaylist: ((Song) -> Unit)?
+) {
+    var sortOrder by rememberSaveable { mutableStateOf(SongSortOrder.DEFAULT) }
     var showSortMenu by remember { mutableStateOf(false) }
 
     val sortedSongs = remember(songs, sortOrder) {
@@ -216,12 +286,18 @@ fun SongRowItem(
     modifier: Modifier = Modifier
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
     val queueActions = LocalQueueActions.current
     val showMessage = LocalShowMessage.current
+    val songInfo = LocalSongInfo.current
+    if (showInfo && songInfo != null) {
+        SongInfoDialog(song = song, source = songInfo, onDismiss = { showInfo = false })
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            // Long-press: Song info
+            .combinedClickable(onClick = onClick, onLongClick = songInfo?.let { { showInfo = true } })
             .padding(horizontal = 16.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -268,7 +344,7 @@ fun SongRowItem(
             )
         }
 
-        if (queueActions != null || onDelete != null || onAddToPlaylist != null || onRemoveFromPlaylist != null) {
+        if (queueActions != null || onDelete != null || onAddToPlaylist != null || onRemoveFromPlaylist != null || songInfo != null) {
             Box {
                 IconButton(
                     onClick = { menuOpen = true },
@@ -327,6 +403,16 @@ fun SongRowItem(
                             onClick = {
                                 menuOpen = false
                                 onRemoveFromPlaylist()
+                            }
+                        )
+                    }
+                    if (songInfo != null) {
+                        DropdownMenuItem(
+                            text = { Text("Song info") },
+                            leadingIcon = { Icon(imageVector = Icons.Outlined.Info, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                showInfo = true
                             }
                         )
                     }
