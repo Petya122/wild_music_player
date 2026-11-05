@@ -50,6 +50,9 @@ interface PlayerController {
 
     fun removeQueueItem(position: Int)
 
+    /** Undo for [removeQueueItem]: puts a removed item back where it was. */
+    fun restoreQueueItem(item: QueueItem) {}
+
     /** Jumps to the song at [position] in [queue] and plays it. */
     fun skipToQueueItem(position: Int)
 

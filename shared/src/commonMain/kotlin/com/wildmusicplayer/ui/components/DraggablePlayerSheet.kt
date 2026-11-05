@@ -231,23 +231,25 @@ fun DraggablePlayerSheet(
                     }
             ) {
                 if (progress < 0.6f) {
-                    MiniPlayerBar(
-                        song = song,
-                        isPlaying = isPlaying,
-                        onExpand = {
-                            onExpandedChange(true)
-                            scope.launch {
-                                offsetY.animateTo(
-                                    0f,
-                                    spring(stiffness = Spring.StiffnessMediumLow)
-                                )
-                            }
-                        },
-                        onTogglePlay = onTogglePlay,
-                        onSkipNext = onSkipNext,
-                        onSkipPrev = onSkipPrevious,
-                        onStop = onStop
-                    )
+                    SwipeToSkip(onNext = onSkipNext, onPrevious = onSkipPrevious) {
+                        MiniPlayerBar(
+                            song = song,
+                            isPlaying = isPlaying,
+                            onExpand = {
+                                onExpandedChange(true)
+                                scope.launch {
+                                    offsetY.animateTo(
+                                        0f,
+                                        spring(stiffness = Spring.StiffnessMediumLow)
+                                    )
+                                }
+                            },
+                            onTogglePlay = onTogglePlay,
+                            onSkipNext = onSkipNext,
+                            onSkipPrev = onSkipPrevious,
+                            onStop = onStop
+                        )
+                    }
                 }
             }
         }

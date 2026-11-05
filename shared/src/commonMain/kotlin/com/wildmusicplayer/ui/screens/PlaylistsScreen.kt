@@ -15,6 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import com.wildmusicplayer.ui.LocalShowUndo
+import sh.calvin.reorderable.rememberReorderableLazyListState
+import sh.calvin.reorderable.ReorderableItem
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -127,7 +137,12 @@ fun PlaylistsScreen(
     onDeleteSong: ((Song) -> Unit)? = null,
     onAddToPlaylist: ((Song) -> Unit)? = null,
     onRemoveSongFromPlaylist: ((playlistId: String, songId: Long) -> Unit)? = null,
-    onExportPlaylist: ((Playlist) -> Unit)? = null
+    onExportPlaylist: ((Playlist) -> Unit)? = null,
+    onRenamePlaylist: ((playlistId: String, name: String) -> Unit)? = null,
+    // Undo for the removals above: put the song / track back at its old place
+    onRestoreSongToPlaylist: ((playlistId: String, songId: Long, index: Int) -> Unit)? = null,
+    onRestoreOnlineTrack: ((playlistId: String, track: OnlineTrack, index: Int) -> Unit)? = null,
+    onReorderPlaylist: ((playlistId: String, songIds: List<Long>, onlineTrackIds: List<String>) -> Unit)? = null
 ) {
     var selectedPlaylist by remember { mutableStateOf<PlaylistSelection>(PlaylistSelection.None) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -135,6 +150,7 @@ fun PlaylistsScreen(
     var newPlaylistName by remember { mutableStateOf("") }
     var overviewFilter by remember { mutableStateOf(PlaylistFilter.ALL) }
     var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
+    val showUndo = LocalShowUndo.current
 
     // Back from an open playlist returns to the playlist list, not to Home
     PlatformBackHandler(enabled = selectedPlaylist !is PlaylistSelection.None) {
@@ -492,7 +508,17 @@ fun PlaylistsScreen(
                 onToggleFavorite = onToggleFavorite,
                 onDeleteSong = onDeleteSong,
                 onAddToPlaylist = onAddToPlaylist,
-                onRemoveFromPlaylist = { song -> onRemoveSongFromPlaylist?.invoke(playlist.id, song.id) },
+                onRemoveFromPlaylist = { song ->
+                    val index = playlist.songIds.indexOf(song.id)
+                    onRemoveSongFromPlaylist?.invoke(playlist.id, song.id)
+                    onRestoreSongToPlaylist?.let { restore ->
+                        showUndo("Removed from ${playlist.name}") { restore(playlist.id, song.id, index) }
+                    }
+                },
+                onRename = onRenamePlaylist?.let { rename -> { name: String -> rename(playlist.id, name) } },
+                onReorder = onReorderPlaylist?.let { reorder ->
+                    { songIds: List<Long>, trackIds: List<String> -> reorder(playlist.id, songIds, trackIds) }
+                },
                 isOfflineOnlyMode = isOfflineOnlyMode,
                 downloadIndex = downloadIndex,
                 downloader = downloader,
@@ -501,7 +527,14 @@ fun PlaylistsScreen(
                     if (song != null) onSongClick(song, playQueue)
                 },
                 onRemoveOnlineTrack = { trackId ->
+                    val index = playlist.onlineTracks.indexOfFirst { it.id == trackId }
+                    val track = playlist.onlineTracks.getOrNull(index)
                     onRemoveOnlineTrack?.invoke(playlist.id, trackId)
+                    if (track != null) {
+                        onRestoreOnlineTrack?.let { restore ->
+                            showUndo("Removed from ${playlist.name}") { restore(playlist.id, track, index) }
+                        }
+                    }
                 }
             )
         }
@@ -802,11 +835,46 @@ private fun PlaylistDetailView(
     onRemoveOnlineTrack: ((String) -> Unit)? = null,
     onDeleteSong: ((Song) -> Unit)? = null,
     onAddToPlaylist: ((Song) -> Unit)? = null,
-    onRemoveFromPlaylist: ((Song) -> Unit)? = null
+    onRemoveFromPlaylist: ((Song) -> Unit)? = null,
+    // Only custom playlists can be renamed and reordered
+    onRename: ((String) -> Unit)? = null,
+    onReorder: ((songIds: List<Long>, onlineTrackIds: List<String>) -> Unit)? = null
 ) {
     val showMessage = LocalShowMessage.current
     val queueActions = LocalQueueActions.current
     var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var isReordering by remember { mutableStateOf(false) }
+
+    // Local copies follow the finger while dragging; the playlist is saved when a song is dropped
+    var isDragging by remember { mutableStateOf(false) }
+    var songOrder by remember { mutableStateOf(songs) }
+    var trackOrder by remember { mutableStateOf(onlineTracks) }
+    LaunchedEffect(songs, onlineTracks) {
+        if (!isDragging) {
+            songOrder = songs
+            trackOrder = onlineTracks
+        }
+    }
+    val listState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        val fromKey = from.key
+        val toKey = to.key
+        // Songs move among songs, online tracks among online tracks
+        if (fromKey is Long && toKey is Long) {
+            val i = songOrder.indexOfFirst { it.id == fromKey }
+            val j = songOrder.indexOfFirst { it.id == toKey }
+            if (i >= 0 && j >= 0) songOrder = songOrder.toMutableList().apply { add(j, removeAt(i)) }
+        } else if (fromKey is String && toKey is String && fromKey.startsWith(ONLINE_KEY) && toKey.startsWith(ONLINE_KEY)) {
+            val i = trackOrder.indexOfFirst { ONLINE_KEY + it.id == fromKey }
+            val j = trackOrder.indexOfFirst { ONLINE_KEY + it.id == toKey }
+            if (i >= 0 && j >= 0) trackOrder = trackOrder.toMutableList().apply { add(j, removeAt(i)) }
+        }
+    }
+    val commitOrder = {
+        isDragging = false
+        onReorder?.invoke(songOrder.map { it.id }, trackOrder.map { it.id })
+    }
     val activeDownloads by (downloader?.activeDownloads ?: remember { MutableStateFlow(emptyMap()) }).collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -840,6 +908,31 @@ private fun PlaylistDetailView(
                     color = MaterialTheme.colorScheme.outline
                 )
             }
+            if (onRename != null) {
+                IconButton(onClick = { showRenameDialog = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Rename playlist", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (onReorder != null && songs.size + onlineTracks.size > 1) {
+                IconButton(onClick = { isReordering = !isReordering }) {
+                    Icon(
+                        imageVector = if (isReordering) Icons.Default.Check else Icons.Default.SwapVert,
+                        contentDescription = if (isReordering) "Done reordering" else "Reorder songs",
+                        tint = if (isReordering) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (showRenameDialog && onRename != null) {
+            RenamePlaylistDialog(
+                currentName = title,
+                onRename = { name ->
+                    onRename(name)
+                    showRenameDialog = false
+                },
+                onDismiss = { showRenameDialog = false }
+            )
         }
 
         // Hybrid Sync Offline Banner
@@ -977,12 +1070,13 @@ private fun PlaylistDetailView(
             }
 
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = bottomPadding)
             ) {
                 if (songs.isNotEmpty() && (detailFilter == PlaylistDetailFilter.ALL || detailFilter == PlaylistDetailFilter.LOCAL)) {
                     if (onlineTracks.isNotEmpty()) {
-                        item {
+                        item(key = "header:local") {
                             Text(
                                 text = "Local Tracks (${songs.size})",
                                 style = MaterialTheme.typography.titleSmall,
@@ -993,25 +1087,38 @@ private fun PlaylistDetailView(
                         }
                     }
 
-                    items(songs, key = { it.id }) { song ->
+                    items(songOrder, key = { it.id }) { song ->
                         val isCurrent = song.id == currentPlayingSongId
                         val isFavorite = favoriteSongIds.contains(song.id)
 
-                        SongRowItem(
-                            song = song,
-                            isCurrent = isCurrent,
-                            isFavorite = isFavorite,
-                            onClick = { onSongClick(song) },
-                            onToggleFavorite = { onToggleFavorite(song.id) },
-                            onDelete = onDeleteSong?.let { delete -> { delete(song) } },
-                            onAddToPlaylist = onAddToPlaylist?.let { add -> { add(song) } },
-                            onRemoveFromPlaylist = onRemoveFromPlaylist?.let { remove -> { remove(song) } }
-                        )
+                        ReorderableItem(reorderState, key = song.id) { isDraggingItem ->
+                            Row(
+                                modifier = Modifier.background(
+                                    if (isDraggingItem) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
+                                ),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                SongRowItem(
+                                    song = song,
+                                    isCurrent = isCurrent,
+                                    isFavorite = isFavorite,
+                                    onClick = { onSongClick(song) },
+                                    onToggleFavorite = { onToggleFavorite(song.id) },
+                                    onDelete = onDeleteSong?.let { delete -> { delete(song) } },
+                                    onAddToPlaylist = onAddToPlaylist?.let { add -> { add(song) } },
+                                    onRemoveFromPlaylist = onRemoveFromPlaylist?.let { remove -> { remove(song) } },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isReordering) {
+                                    ReorderHandle(Modifier.draggableHandle(onDragStarted = { isDragging = true }, onDragStopped = { commitOrder() }))
+                                }
+                            }
+                        }
                     }
                 }
 
                 if (onlineTracks.isNotEmpty() && (detailFilter == PlaylistDetailFilter.ALL || detailFilter == PlaylistDetailFilter.ONLINE)) {
-                    item {
+                    item(key = "header:online") {
                         Text(
                             text = "Online Stream Tracks (${onlineTracks.size})",
                             style = MaterialTheme.typography.titleSmall,
@@ -1021,7 +1128,7 @@ private fun PlaylistDetailView(
                         )
                     }
 
-                    items(onlineTracks, key = { it.id }) { track ->
+                    items(trackOrder, key = { ONLINE_KEY + it.id }) { track ->
                         // Only the file downloaded from this exact video counts as this track;
                         // another recording with the same title/artist is just "similar"
                         val localMatch = downloadedCopyOf(track, allSongs, downloadIndex)
@@ -1033,38 +1140,51 @@ private fun PlaylistDetailView(
                         val queueSong = localMatch ?: track.takeIf { !isOfflineOnlyMode && it.webUrl.isNotBlank() }
                             ?.let { Song.fromOnline(it.title, it.artist, it.webUrl, it.durationSeconds, it.thumbnailUrl) }
 
-                        OnlineTrackRowItem(
-                            track = track,
-                            isLocallyAvailable = (localMatch != null),
-                            hasSimilarLocal = hasSimilarLocal,
-                            downloadProgress = activeDownloads[track.id],
-                            onTrackClick = {
-                                if (localMatch != null) {
-                                    showMessage("Playing local offline audio: ${localMatch.title}")
-                                    onSongClick(localMatch)
-                                } else if (isOfflineOnlyMode) {
-                                    showMessage("Offline Only Mode is active. Switch to Online Mode to stream.")
-                                } else {
-                                    onPlayOnlineTrack?.invoke(track)
+                        ReorderableItem(reorderState, key = ONLINE_KEY + track.id) { isDraggingItem ->
+                            Row(
+                                modifier = Modifier.background(
+                                    if (isDraggingItem) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
+                                ),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OnlineTrackRowItem(
+                                    modifier = Modifier.weight(1f),
+                                    track = track,
+                                    isLocallyAvailable = (localMatch != null),
+                                    hasSimilarLocal = hasSimilarLocal,
+                                    downloadProgress = activeDownloads[track.id],
+                                    onTrackClick = {
+                                        if (localMatch != null) {
+                                            showMessage("Playing local offline audio: ${localMatch.title}")
+                                            onSongClick(localMatch)
+                                        } else if (isOfflineOnlyMode) {
+                                            showMessage("Offline Only Mode is active. Switch to Online Mode to stream.")
+                                        } else {
+                                            onPlayOnlineTrack?.invoke(track)
+                                        }
+                                    },
+                                    onDownloadClick = {
+                                        if (startDownloads(downloader, listOf(track), "download", showMessage)) {
+                                            showMessage("Downloading in background: ${track.title}")
+                                        }
+                                    },
+                                    onRemoveClick = if (onRemoveOnlineTrack != null) {
+                                        { onRemoveOnlineTrack(track.id) }
+                                    } else null,
+                                    onPlayNext = queueSong?.let { queued -> queueActions?.let { actions -> {
+                                        actions.playNext(queued)
+                                        showMessage("Playing next: ${track.title}")
+                                    } } },
+                                    onAddToQueue = queueSong?.let { queued -> queueActions?.let { actions -> {
+                                        actions.addToQueue(queued)
+                                        showMessage("Added to queue: ${track.title}")
+                                    } } }
+                                )
+                                if (isReordering) {
+                                    ReorderHandle(Modifier.draggableHandle(onDragStarted = { isDragging = true }, onDragStopped = { commitOrder() }))
                                 }
-                            },
-                            onDownloadClick = {
-                                if (startDownloads(downloader, listOf(track), "download", showMessage)) {
-                                    showMessage("Downloading in background: ${track.title}")
-                                }
-                            },
-                            onRemoveClick = if (onRemoveOnlineTrack != null) {
-                                { onRemoveOnlineTrack(track.id) }
-                            } else null,
-                            onPlayNext = queueSong?.let { queued -> queueActions?.let { actions -> {
-                                actions.playNext(queued)
-                                showMessage("Playing next: ${track.title}")
-                            } } },
-                            onAddToQueue = queueSong?.let { queued -> queueActions?.let { actions -> {
-                                actions.addToQueue(queued)
-                                showMessage("Added to queue: ${track.title}")
-                            } } }
-                        )
+                            }
+                        }
                     }
                 }
             }
@@ -1085,8 +1205,40 @@ private fun PlaylistDetailView(
     }
 }
 
+// Online track keys in the playlist list, apart from song IDs (numbers) and section headers
+private const val ONLINE_KEY = "online:"
+
+@Composable
+private fun ReorderHandle(modifier: Modifier) {
+    IconButton(onClick = {}, modifier = modifier) {
+        Icon(Icons.Default.DragHandle, contentDescription = "Drag to reorder", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun RenamePlaylistDialog(currentName: String, onRename: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename playlist", fontWeight = FontWeight.Bold) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text("Name") }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onRename(name) }, enabled = name.isNotBlank()) { Text("Rename") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
 @Composable
 private fun OnlineTrackRowItem(
+    modifier: Modifier = Modifier,
     track: OnlineTrack,
     isLocallyAvailable: Boolean = false,
     // Another song with the same title and artist is on the phone (not this exact video)
@@ -1101,7 +1253,7 @@ private fun OnlineTrackRowItem(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable(onClick = onTrackClick),

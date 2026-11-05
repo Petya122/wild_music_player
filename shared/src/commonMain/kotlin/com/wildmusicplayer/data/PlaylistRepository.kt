@@ -140,6 +140,54 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         savePlaylists(updated)
     }
 
+    fun renamePlaylist(playlistId: String, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        updatePlaylist(playlistId) { it.copy(name = trimmed) }
+    }
+
+    /**
+     * Puts a playlist's songs and online tracks in the given order. Entries the order doesn't mention
+     * (added meanwhile) keep their place at the end; unknown IDs are ignored, so nothing is lost or invented.
+     */
+    fun reorderPlaylist(playlistId: String, songIds: List<Long>, onlineTrackIds: List<String>) {
+        updatePlaylist(playlistId) { playlist ->
+            val songs = songIds.filter { it in playlist.songIds }.distinct()
+            val tracksById = playlist.onlineTracks.associateBy { it.id }
+            val tracks = onlineTrackIds.distinct().mapNotNull { tracksById[it] }
+            playlist.copy(
+                songIds = songs + playlist.songIds.filter { it !in songs },
+                onlineTracks = tracks + playlist.onlineTracks.filter { it !in tracks }
+            )
+        }
+    }
+
+    /** Undo for "Remove from this playlist": puts the song back where it was. */
+    fun insertSongInPlaylist(playlistId: String, songId: Long, index: Int) {
+        updatePlaylist(playlistId) { playlist ->
+            if (songId in playlist.songIds) return@updatePlaylist playlist
+            val songs = playlist.songIds.toMutableList()
+            songs.add(index.coerceIn(0, songs.size), songId)
+            playlist.copy(songIds = songs)
+        }
+    }
+
+    /** Undo for removing an online track: puts it back where it was. */
+    fun insertOnlineTrackInPlaylist(playlistId: String, track: OnlineTrack, index: Int) {
+        updatePlaylist(playlistId) { playlist ->
+            if (playlist.onlineTracks.any { it.id == track.id }) return@updatePlaylist playlist
+            val tracks = playlist.onlineTracks.toMutableList()
+            tracks.add(index.coerceIn(0, tracks.size), track)
+            playlist.copy(onlineTracks = tracks)
+        }
+    }
+
+    private fun updatePlaylist(playlistId: String, change: (Playlist) -> Playlist) {
+        val updated = _customPlaylists.value.map { if (it.id == playlistId) change(it) else it }
+        _customPlaylists.value = updated
+        savePlaylists(updated)
+    }
+
     fun toggleSongInPlaylist(playlistId: String, songId: Long): Boolean {
         val updated = _customPlaylists.value.map { playlist ->
             if (playlist.id == playlistId) {

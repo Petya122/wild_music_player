@@ -37,6 +37,7 @@ import com.wildmusicplayer.ui.screens.PlaylistsScreen
 import com.wildmusicplayer.ui.screens.SearchScreen
 import com.wildmusicplayer.ui.screens.SongsScreen
 import com.wildmusicplayer.ui.theme.ThemeMode
+import com.wildmusicplayer.ui.theme.AccentColor
 import com.wildmusicplayer.ui.theme.WildMusicPlayerTheme
 import kotlinx.coroutines.launch
 
@@ -55,6 +56,8 @@ fun WildMusicApp(
 ) {
     val themeName by library.settings.themeMode.collectAsState()
     val theme = ThemeMode.entries.firstOrNull { it.name == themeName } ?: ThemeMode.SYSTEM
+    val accentName by library.settings.accentColor.collectAsState()
+    val accent = AccentColor.entries.firstOrNull { it.name == accentName } ?: AccentColor.BLUE
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val showMessage: (String) -> Unit = { message ->
@@ -69,7 +72,7 @@ fun WildMusicApp(
         LocalAudioEffects provides audioEffects,
         LocalQueueActions provides QueueActions(library.player::playNext, library.player::addToQueue)
     ) {
-        WildMusicPlayerTheme(themeMode = theme) {
+        WildMusicPlayerTheme(themeMode = theme, accent = accent) {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 AppContent(library, emptyLibraryHint, snackbarHostState, showMessage)
             }
@@ -182,7 +185,9 @@ private fun AppContent(
                         isOfflineOnlyMode = true,
                         onRemoveOnlineTrack = playlists::removeOnlineTrackFromPlaylist,
                         onAddToPlaylist = { songForPlaylistPicker = it },
-                        onRemoveSongFromPlaylist = playlists::removeSongFromPlaylist
+                        onRemoveSongFromPlaylist = playlists::removeSongFromPlaylist,
+                        onRenamePlaylist = playlists::renamePlaylist,
+                        onReorderPlaylist = playlists::reorderPlaylist
                     )
                     NavigationTab.DOWNLOADER -> Unit
                 }

@@ -9,6 +9,16 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import com.wildmusicplayer.data.PlaylistRepository
+import androidx.media3.session.SessionResult
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.CommandButton
+import android.os.Bundle
 import android.os.Looper
 import android.os.SystemClock
 import androidx.annotation.OptIn
@@ -52,6 +62,9 @@ class PlaybackService : MediaSessionService() {
     private lateinit var resumeSettings: ResumeSettings
     private var audioManager: AudioManager? = null
 
+    private lateinit var playlists: PlaylistRepository
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private val mainHandler = Handler(Looper.getMainLooper())
     // Queue files are written off the main thread; a single thread keeps saves in order
     private val saveExecutor = Executors.newSingleThreadExecutor()
@@ -70,6 +83,7 @@ class PlaybackService : MediaSessionService() {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             saveQueue()
             applyTrackLoudness(mediaItem)
+            updateFavoriteButton()
         }
 
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
@@ -177,6 +191,10 @@ class PlaybackService : MediaSessionService() {
 
         audioManager = getSystemService(AudioManager::class.java)
         audioManager?.registerAudioDeviceCallback(audioDeviceCallback, mainHandler)
+
+        // The notification's heart follows favorites changed anywhere, in the app too
+        playlists = PlaylistRepository.getInstance(this)
+        serviceScope.launch { playlists.favoriteSongIds.collect { updateFavoriteButton() } }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -188,6 +206,7 @@ class PlaybackService : MediaSessionService() {
         mainHandler.removeCallbacksAndMessages(null)
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
         SleepTimerManager.detach()
+        serviceScope.cancel()
         com.wildmusicplayer.data.AudioEffectsManager.getInstance(this).release()
         mediaSession?.run {
             player.removeListener(playerListener)
@@ -223,6 +242,30 @@ class PlaybackService : MediaSessionService() {
         }, CAR_REFRESH_DELAY_MS)
     }
 
+    // Only songs on the phone can be favorites (online streams have no MediaStore ID)
+    private fun currentSongId(): Long? =
+        mediaSession?.player?.currentMediaItem?.mediaId?.toLongOrNull()?.takeIf { it > 0 }
+
+    /** A ♡ button in the notification and lock screen player, filled when the song is a favorite. */
+    private fun updateFavoriteButton() {
+        val session = mediaSession ?: return
+        val songId = currentSongId()
+        val buttons = if (songId == null) {
+            emptyList()
+        } else {
+            val isFavorite = songId in playlists.favoriteSongIds.value
+            listOf(
+                CommandButton.Builder(if (isFavorite) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED)
+                    .setDisplayName(if (isFavorite) "Remove from favorites" else "Add to favorites")
+                    .setSessionCommand(FAVORITE_COMMAND)
+                    // An extra button, not instead of Next (the default slot would replace it)
+                    .setSlots(CommandButton.SLOT_OVERFLOW)
+                    .build()
+            )
+        }
+        session.setMediaButtonPreferences(buttons)
+    }
+
     // Empty queues aren't saved: "Stop" clears the saved queue on purpose (MusicControllerManager)
     private fun saveQueue() {
         val snapshot = mediaSession?.player?.snapshotQueue() ?: return
@@ -231,6 +274,33 @@ class PlaybackService : MediaSessionService() {
     }
 
     private inner class SessionCallback : MediaSession.Callback {
+        // Every controller (the notification, the lock screen, the app) may use the favorite button
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                .add(FAVORITE_COMMAND)
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle
+        ): ListenableFuture<SessionResult> {
+            if (customCommand.customAction == ACTION_TOGGLE_FAVORITE) {
+                // The favorites flow then updates the button
+                currentSongId()?.let { playlists.toggleFavorite(it) }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            return super.onCustomCommand(session, controller, customCommand, args)
+        }
+
         /**
          * Called when a car radio or headset presses Play while nothing is loaded, including when
          * Android had to start this service from scratch because the app was closed.
@@ -267,6 +337,9 @@ class PlaybackService : MediaSessionService() {
         // Long enough for the car's control link to come up after the audio one
         private const val CAR_REFRESH_DELAY_MS = 4_000L
         private const val CAR_NUDGE_GAP_MS = 400L
+
+        private const val ACTION_TOGGLE_FAVORITE = "com.wildmusicplayer.TOGGLE_FAVORITE"
+        private val FAVORITE_COMMAND = SessionCommand(ACTION_TOGGLE_FAVORITE, Bundle.EMPTY)
     }
 }
 

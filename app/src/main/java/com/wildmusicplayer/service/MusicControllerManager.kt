@@ -230,6 +230,13 @@ class MusicControllerManager(private val context: Context) : PlayerController {
         if (controller.mediaItemCount <= 1) stopPlayback() else controller.removeMediaItem(index)
     }
 
+    override fun restoreQueueItem(item: QueueItem) {
+        val controller = mediaController ?: return
+        if (item.song.contentUri.isEmpty()) return
+        remember(listOf(item.song))
+        controller.addMediaItem(item.playerIndex.coerceIn(0, controller.mediaItemCount), item.song.toMediaItem())
+    }
+
     override fun skipToQueueItem(position: Int) {
         val controller = mediaController ?: return
         val index = _queue.value.getOrNull(position)?.playerIndex ?: return

@@ -1,6 +1,20 @@
 package com.wildmusicplayer.ui.screens
 
 import androidx.compose.foundation.clickable
+import com.wildmusicplayer.ui.theme.AccentColor
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,7 +68,12 @@ import kotlin.math.abs
 // Settings sections: theme, screen, car, library filters and sound
 
 @Composable
-internal fun AppearanceSection(currentTheme: ThemeMode, onThemeSelected: (ThemeMode) -> Unit) {
+internal fun AppearanceSection(
+    currentTheme: ThemeMode,
+    onThemeSelected: (ThemeMode) -> Unit,
+    currentAccent: AccentColor,
+    onAccentSelected: (AccentColor) -> Unit
+) {
     SettingsCard(icon = Icons.Default.Palette, title = "Appearance & Theme") {
         ThemeMode.entries.forEachIndexed { index, mode ->
             Row(
@@ -78,7 +97,8 @@ internal fun AppearanceSection(currentTheme: ThemeMode, onThemeSelected: (ThemeM
                     val subtitle = when (mode) {
                         ThemeMode.SYSTEM -> "Matches your Android system dark/light mode"
                         ThemeMode.LIGHT -> "Clean light theme with vibrant accents"
-                        ThemeMode.DARK -> "Battery-friendly pitch dark AMOLED mode"
+                        ThemeMode.DARK -> "Deep blue-grey, easy on the eyes at night"
+                        ThemeMode.BLACK -> "True black: saves battery on OLED screens"
                     }
                     Text(
                         text = subtitle,
@@ -92,6 +112,55 @@ internal fun AppearanceSection(currentTheme: ThemeMode, onThemeSelected: (ThemeM
                     modifier = Modifier.padding(vertical = 2.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                 )
+            }
+        }
+        SettingsDivider()
+        AccentColorPicker(currentAccent, onAccentSelected)
+    }
+}
+
+/** One round swatch per accent color; "Wallpaper" only where the phone has wallpaper colors (Android 12+). */
+@Composable
+private fun AccentColorPicker(current: AccentColor, onSelected: (AccentColor) -> Unit) {
+    val accents = AccentColor.entries.filter { it != AccentColor.WALLPAPER || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S }
+    val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Text(
+        text = "Accent Color",
+        style = MaterialTheme.typography.bodyLarge,
+        fontWeight = FontWeight.Medium
+    )
+    Text(
+        text = current.title,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        accents.forEach { accent ->
+            val selected = accent == current
+            val swatch = if (accent == AccentColor.WALLPAPER) {
+                Brush.sweepGradient(listOf(Color(0xFFEF4444), Color(0xFFF59E0B), Color(0xFF22C55E), Color(0xFF3B82F6), Color(0xFFA855F7), Color(0xFFEF4444)))
+            } else {
+                SolidColor(if (isDarkTheme) accent.dark else accent.light)
+            }
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(swatch)
+                    .border(
+                        width = if (selected) 3.dp else 0.dp,
+                        color = if (selected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                        shape = CircleShape
+                    )
+                    .clickable { onSelected(accent) },
+                contentAlignment = Alignment.Center
+            ) {
+                if (selected) Icon(Icons.Default.Check, contentDescription = accent.title, tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
     }

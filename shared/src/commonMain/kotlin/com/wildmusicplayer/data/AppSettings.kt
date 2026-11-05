@@ -15,6 +15,10 @@ class AppSettings(private val prefs: KeyValueStore) {
     /** Name of the theme: "SYSTEM", "LIGHT" or "DARK". */
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
+    private val _accentColor = MutableStateFlow(prefs.getString(KEY_ACCENT_COLOR) ?: "BLUE")
+    /** Name of the accent color (AccentColor in the theme), "BLUE" by default. */
+    val accentColor: StateFlow<String> = _accentColor.asStateFlow()
+
     private val _keepScreenOn = MutableStateFlow(prefs.getBoolean(KEY_KEEP_SCREEN_ON, false))
     val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
 
@@ -29,6 +33,11 @@ class AppSettings(private val prefs: KeyValueStore) {
     fun setThemeMode(name: String) {
         _themeMode.value = name
         prefs.putString(KEY_THEME_MODE, name)
+    }
+
+    fun setAccentColor(name: String) {
+        _accentColor.value = name
+        prefs.putString(KEY_ACCENT_COLOR, name)
     }
 
     fun setKeepScreenOn(enabled: Boolean) {
@@ -59,6 +68,7 @@ class AppSettings(private val prefs: KeyValueStore) {
     companion object {
         const val PREFS_NAME = "wild_music_player_prefs"
         private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_ACCENT_COLOR = "accent_color"
         private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_FILTER_SHORT_AUDIO = "key_filter_short_audio"

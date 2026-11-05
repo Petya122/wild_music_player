@@ -1,6 +1,12 @@
 package com.wildmusicplayer.ui.components
 
 import androidx.compose.foundation.background
+import com.wildmusicplayer.ui.LocalArtworkColors
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -131,15 +137,27 @@ fun NowPlayingScreen(
         if (isDraggingSlider) dragSliderValue else (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
+    // The cover's main color fades down into the background; it follows the song smoothly
+    val artworkColors = LocalArtworkColors.current
+    val coverColor by produceState<Color?>(null, song.albumArtUri) {
+        value = song.albumArtUri?.let { uri -> artworkColors?.colorOf(uri)?.let { Color(it) } }
+    }
+    val background = MaterialTheme.colorScheme.background
+    val tint by animateColorAsState(
+        targetValue = coverColor?.let { lerp(background, it, COVER_TINT_STRENGTH) } ?: background,
+        animationSpec = tween(600)
+    )
+
     Surface(
         modifier = modifier
             .fillMaxSize()
             .systemBarsPadding(),
-        color = MaterialTheme.colorScheme.background
+        color = background
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Brush.verticalGradient(0f to tint, 0.75f to background))
                 .padding(horizontal = 24.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
@@ -200,31 +218,38 @@ fun NowPlayingScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Large Album Artwork
-            Box(
+            // Large Album Artwork: swipe it left/right for the next/previous song
+            SwipeToSkip(
+                onNext = onSkipNext,
+                onPrevious = onSkipPrevious,
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
                     .aspectRatio(1f)
-                    .shadow(elevation = 16.dp, shape = RoundedCornerShape(20.dp))
-                    .clip(RoundedCornerShape(20.dp)),
-                contentAlignment = Alignment.Center
             ) {
-                if (showLyrics) {
-                    LyricsView(
-                        lyrics = lyrics,
-                        currentPosition = currentPosition,
-                        isPlaying = isPlaying,
-                        onSeekTo = onSeekTo,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    )
-                } else {
-                    SongThumbnail(
-                        albumArtUri = song.albumArtUri,
-                        modifier = Modifier.fillMaxSize(),
-                        shape = RoundedCornerShape(20.dp)
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .shadow(elevation = 16.dp, shape = RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(20.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (showLyrics) {
+                        LyricsView(
+                            lyrics = lyrics,
+                            currentPosition = currentPosition,
+                            isPlaying = isPlaying,
+                            onSeekTo = onSeekTo,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        )
+                    } else {
+                        SongThumbnail(
+                            albumArtUri = song.albumArtUri,
+                            modifier = Modifier.fillMaxSize(),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                    }
                 }
             }
 
@@ -576,6 +601,9 @@ private fun HeaderTitle(sleepTimer: SleepTimer?) {
         letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)
     )
 }
+
+// How much of the cover color shows at the top of Now Playing (0 = none, 1 = full)
+private const val COVER_TINT_STRENGTH = 0.45f
 
 private fun formatTime(millis: Long): String {
     val totalSeconds = (millis / 1000).coerceAtLeast(0)

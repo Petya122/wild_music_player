@@ -28,12 +28,15 @@ import androidx.compose.ui.unit.dp
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.ui.theme.ThemeMode
+import com.wildmusicplayer.ui.theme.AccentColor
 
 /** The Settings screen: one card per section, each in its own file (GeneralSettings, UpdateSettings, …). */
 @Composable
 fun SettingsScreen(
     currentTheme: ThemeMode,
     onThemeSelected: (ThemeMode) -> Unit,
+    currentAccent: AccentColor,
+    onAccentSelected: (AccentColor) -> Unit,
     keepScreenOn: Boolean,
     onKeepScreenOnToggled: (Boolean) -> Unit,
     filterShortAudio: Boolean,
@@ -59,7 +62,7 @@ fun SettingsScreen(
             .padding(bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        AppearanceSection(currentTheme, onThemeSelected)
+        AppearanceSection(currentTheme, onThemeSelected, currentAccent, onAccentSelected)
         DisplaySection(keepScreenOn, onKeepScreenOnToggled)
         CarSection()
         LibrarySection(filterShortAudio, onFilterShortAudioToggled, filterRecordings, onFilterRecordingsToggled)

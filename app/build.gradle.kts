@@ -20,8 +20,8 @@ android {
         applicationId = "com.wildmusicplayer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 46
-        versionName = "0.9.0"
+        versionCode = 47
+        versionName = "0.9.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -92,6 +92,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.androidx.palette)
     implementation(libs.androidx.work.runtime)
     debugImplementation(libs.androidx.compose.ui.tooling)
 

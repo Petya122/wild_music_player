@@ -22,8 +22,18 @@ class QueueActions(val playNext: (Song) -> Unit, val addToQueue: (Song) -> Unit)
 
 val LocalQueueActions = staticCompositionLocalOf<QueueActions?> { null }
 
+/** Shows [message] with an Undo button that runs the given action. Provided by each app. */
+val LocalShowUndo = staticCompositionLocalOf<(message: String, onUndo: () -> Unit) -> Unit> { { _, _ -> } }
+
 /** The sleep timer; null hides its button. Provided by each app. */
 val LocalSleepTimer = staticCompositionLocalOf<SleepTimer?> { null }
 
 /** Where Now Playing gets lyrics; null hides the Lyrics button. Provided by each app. */
 val LocalLyrics = staticCompositionLocalOf<LyricsRepository?> { null }
+
+/** Finds the main color of a song's cover (ARGB), for tinting Now Playing; null = no tint. Provided by each app. */
+fun interface ArtworkColors {
+    suspend fun colorOf(artworkUri: String): Int?
+}
+
+val LocalArtworkColors = staticCompositionLocalOf<ArtworkColors?> { null }

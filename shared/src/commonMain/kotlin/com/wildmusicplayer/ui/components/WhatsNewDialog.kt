@@ -38,6 +38,16 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.1", listOf(
+            ChangelogEntry("👆", "Swipe to Change Songs", "Swipe the cover in Now Playing, or the mini player, left for the next song and right for the previous one."),
+            ChangelogEntry("🎨", "Themes", "Settings → Appearance: pick an accent color (Blue, Purple, Green, Teal, Orange, Red, Pink, or your wallpaper's colors on Android 12+), and the new Black (AMOLED) mode. Every combination works. Cards and buttons now follow the color you pick instead of a stray lilac."),
+            ChangelogEntry("🌈", "Cover-Colored Player", "Now Playing takes on the main color of the song's cover and fades into the background."),
+            ChangelogEntry("❤️", "Favorite from the Notification", "A heart button in the notification and on the lock screen adds the song to your favorites without opening the app."),
+            ChangelogEntry("✏️", "Edit Playlists", "Inside a playlist: ✎ renames it, ⇅ shows drag handles to put the songs in your own order."),
+            ChangelogEntry("↩️", "Undo", "Removed a song from the queue or a playlist by mistake? Tap Undo in the message that appears.")
+        )
+    ),
+    ReleaseNotes(
         "0.9.0", listOf(
             ChangelogEntry("🚗", "Song Titles in the Car", "Found the real reason the car sometimes showed \"Not Provided\": the song details Android passes to Bluetooth didn't match, so it kept waiting before telling the car anything. Fixed. The short pause after connecting from 0.8.7 is gone too."),
             ChangelogEntry("🗑️", "Safer Playlist Deleting", "Deleting a playlist now asks first. The export button got a clearer share icon."),

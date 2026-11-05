@@ -211,13 +211,14 @@ fun SongRowItem(
     onDelete: (() -> Unit)? = null,
     onAddToPlaylist: (() -> Unit)? = null,
     // Only inside a custom playlist
-    onRemoveFromPlaylist: (() -> Unit)? = null
+    onRemoveFromPlaylist: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val queueActions = LocalQueueActions.current
     val showMessage = LocalShowMessage.current
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 7.dp),

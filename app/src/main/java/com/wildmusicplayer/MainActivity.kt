@@ -11,6 +11,8 @@ import com.wildmusicplayer.ui.LocalQueueActions
 import com.wildmusicplayer.ui.LocalSleepTimer
 import com.wildmusicplayer.ui.screens.rememberPlaylistExporter
 import com.wildmusicplayer.ui.LocalLyrics
+import com.wildmusicplayer.ui.LocalArtworkColors
+import com.wildmusicplayer.ui.AndroidArtworkColors
 import com.wildmusicplayer.data.lyricsRepository
 import com.wildmusicplayer.service.SleepTimerManager
 import com.wildmusicplayer.service.AndroidTrackDownloader
@@ -30,6 +32,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import com.wildmusicplayer.ui.theme.AccentColor
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.ColorScheme
+import com.wildmusicplayer.ui.LocalShowUndo
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.luminance
@@ -157,16 +169,34 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeName by settings.themeMode.collectAsState()
             val currentTheme = ThemeMode.entries.firstOrNull { it.name == themeName } ?: ThemeMode.SYSTEM
+            val accentName by settings.accentColor.collectAsState()
+            val accent = AccentColor.entries.firstOrNull { it.name == accentName } ?: AccentColor.BLUE
+            val themeContext = LocalContext.current
+            // Wallpaper colors exist from Android 12 on
+            val wallpaperScheme: ((Boolean) -> ColorScheme)? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                { dark -> if (dark) dynamicDarkColorScheme(themeContext) else dynamicLightColorScheme(themeContext) }
+            } else null
 
             val appContext = LocalContext.current.applicationContext
+            val undoHost = remember { SnackbarHostState() }
+            val undoScope = rememberCoroutineScope()
             CompositionLocalProvider(
+                LocalShowUndo provides { message, onUndo ->
+                    undoScope.launch {
+                        undoHost.currentSnackbarData?.dismiss()
+                        // Long enough to react, also while driving
+                        val result = undoHost.showSnackbar(message, actionLabel = "Undo", duration = SnackbarDuration.Long)
+                        if (result == SnackbarResult.ActionPerformed) onUndo()
+                    }
+                },
                 LocalShowMessage provides { message -> Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() },
                 LocalAudioEffects provides AudioEffectsManager.getInstance(appContext),
                 LocalQueueActions provides QueueActions(controllerManager::playNext, controllerManager::addToQueue),
                 LocalSleepTimer provides SleepTimerManager,
-                LocalLyrics provides lyricsRepository(appContext)
+                LocalLyrics provides lyricsRepository(appContext),
+                LocalArtworkColors provides remember { AndroidArtworkColors(appContext) }
             ) {
-            WildMusicPlayerTheme(themeMode = currentTheme) {
+            WildMusicPlayerTheme(themeMode = currentTheme, accent = accent, wallpaperScheme = wallpaperScheme) {
                 // Status bar icons follow the app's own theme: dark icons on the light theme, even when
                 // the phone itself is in dark mode (they were white on white before)
                 val lightBars = MaterialTheme.colorScheme.background.luminance() > 0.5f
@@ -185,7 +215,9 @@ class MainActivity : ComponentActivity() {
                         library = libraryViewModel,
                         controllerManager = controllerManager,
                         currentTheme = currentTheme,
+                        currentAccent = accent,
                         onThemeChanged = { newTheme -> settings.setThemeMode(newTheme.name) },
+                        undoHost = undoHost,
                         onExitApp = {
                             controllerManager.stopAndShutdown()
                             finishAffinity()
@@ -204,7 +236,9 @@ fun MusicPlayerApp(
     library: LibraryViewModel,
     controllerManager: MusicControllerManager,
     currentTheme: ThemeMode,
+    currentAccent: AccentColor,
     onThemeChanged: (ThemeMode) -> Unit,
+    undoHost: SnackbarHostState,
     onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
@@ -539,6 +573,8 @@ fun MusicPlayerApp(
                     if (isSettingsOpen) {
                         SettingsScreen(
                             currentTheme = currentTheme,
+                            currentAccent = currentAccent,
+                            onAccentSelected = { library.settings.setAccentColor(it.name) },
                             onThemeSelected = { newTheme ->
                                 onThemeChanged(newTheme)
                             },
@@ -638,7 +674,11 @@ fun MusicPlayerApp(
                                 onDeleteSong = requestDeleteSong,
                                 onAddToPlaylist = { songForPlaylistPicker = it },
                                 onRemoveSongFromPlaylist = { playlistId, songId -> playlistRepository.removeSongFromPlaylist(playlistId, songId) },
-                                onExportPlaylist = exportPlaylist
+                                onExportPlaylist = exportPlaylist,
+                                onRenamePlaylist = playlistRepository::renamePlaylist,
+                                onRestoreSongToPlaylist = playlistRepository::insertSongInPlaylist,
+                                onRestoreOnlineTrack = playlistRepository::insertOnlineTrackInPlaylist,
+                                onReorderPlaylist = playlistRepository::reorderPlaylist
                             )
                         }
                         NavigationTab.DOWNLOADER -> {
@@ -686,6 +726,15 @@ fun MusicPlayerApp(
             )
         }
 
+        // "Removed … Undo" messages, just above the mini player and the tabs
+        SnackbarHost(
+            hostState = undoHost,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = if (currentSong != null) 160.dp else 88.dp)
+        )
+
         if (showQueue) {
             val queue by controllerManager.queue.collectAsState()
             val queuePosition by controllerManager.currentQueuePosition.collectAsState()
@@ -696,7 +745,8 @@ fun MusicPlayerApp(
                 onPlayItem = controllerManager::skipToQueueItem,
                 onRemoveItem = controllerManager::removeQueueItem,
                 onMoveItem = controllerManager::moveQueueItem,
-                onDismiss = { showQueue = false }
+                onDismiss = { showQueue = false },
+                onRestoreItem = controllerManager::restoreQueueItem
             )
         }
 

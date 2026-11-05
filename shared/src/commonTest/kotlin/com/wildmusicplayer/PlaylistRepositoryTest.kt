@@ -63,4 +63,31 @@ class PlaylistRepositoryTest {
         assertEquals(listOf(77L), updated.songIds)
         assertTrue(updated.onlineTracks.isEmpty())
     }
+
+    @Test
+    fun renameReorderAndUndoRemoval() {
+        val prefs = FakeKeyValueStore()
+        val repo = PlaylistRepository(prefs)
+        val a = OnlineTrack("a", "A", "X")
+        val b = OnlineTrack("b", "B", "Y")
+        val id = repo.createPlaylist("Car", listOf(1, 2, 3), listOf(a, b)).id
+
+        repo.renamePlaylist(id, "  Road trip ")
+        repo.renamePlaylist(id, "   ") // blank names are ignored
+        // 9 isn't in the playlist; 2 isn't mentioned and stays, at the end
+        repo.reorderPlaylist(id, listOf(3, 9, 1), listOf("b", "a"))
+
+        val reordered = PlaylistRepository(prefs).customPlaylists.value.single()
+        assertEquals("Road trip", reordered.name)
+        assertEquals(listOf(3L, 1L, 2L), reordered.songIds)
+        assertEquals(listOf(b, a), reordered.onlineTracks)
+
+        repo.removeSongFromPlaylist(id, 1)
+        repo.insertSongInPlaylist(id, 1, 1)
+        repo.removeOnlineTrackFromPlaylist(id, "b")
+        repo.insertOnlineTrackInPlaylist(id, b, 0)
+        val restored = repo.customPlaylists.value.single()
+        assertEquals(listOf(3L, 1L, 2L), restored.songIds)
+        assertEquals(listOf(b, a), restored.onlineTracks)
+    }
 }
