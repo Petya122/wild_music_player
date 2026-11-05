@@ -1,5 +1,16 @@
 package com.wildmusicplayer
 
+import androidx.activity.result.ActivityResultLauncher
+import androidx.compose.runtime.MutableState
+import com.wildmusicplayer.ui.LocalEditSong
+import com.wildmusicplayer.ui.components.SongEdit
+import com.wildmusicplayer.ui.components.EditSongDialog
+import com.wildmusicplayer.data.SongEditor
+import com.wildmusicplayer.data.PlayTarget
+import android.content.Intent
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.wildmusicplayer.ui.LocalPickTextFile
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -35,6 +46,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import com.wildmusicplayer.widget.PlayerWidget
+import com.wildmusicplayer.widget.PlaylistWidget
 import com.wildmusicplayer.ui.theme.AccentColor
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -164,8 +176,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // The song whose details are being edited (opened from any song's menu)
+    private val songToEdit = mutableStateOf<Song?>(null)
+
+    // What an app icon shortcut asked to play (Shuffle all, Favorites, a playlist), until it's started
+    private val shortcutTarget = mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        AppShortcuts.targetOf(intent)?.let { shortcutTarget.value = it }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Not again after a rotation: it already started then
+        if (savedInstanceState == null) shortcutTarget.value = AppShortcuts.targetOf(intent)
         val controllerManager = libraryViewModel.player as MusicControllerManager
         val settings = libraryViewModel.settings
 
@@ -181,6 +207,37 @@ class MainActivity : ComponentActivity() {
             } else null
 
             val appContext = LocalContext.current.applicationContext
+            // "Use my own .lrc file": Android's file picker, then the file's text (at most 512 KB)
+            var onTextPicked by remember { mutableStateOf<((String) -> Unit)?>(null) }
+            val textScope = rememberCoroutineScope()
+            val pickTextFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                val deliver = onTextPicked
+                onTextPicked = null
+                if (uri == null || deliver == null) return@rememberLauncherForActivityResult
+                textScope.launch {
+                    val text = withContext(Dispatchers.IO) {
+                        runCatching {
+                            appContext.contentResolver.openInputStream(uri)?.use { input ->
+                                // Bounded: picking a big file by mistake mustn't fill the memory
+                                val buffer = ByteArray(512 * 1024)
+                                var total = 0
+                                while (total < buffer.size) {
+                                    val read = input.read(buffer, total, buffer.size - total)
+                                    if (read < 0) break
+                                    total += read
+                                }
+                                buffer.decodeToString(0, total).removePrefix("\uFEFF")
+                            }
+                        }.getOrNull()
+                    }
+                    if (text.isNullOrBlank()) {
+                        Toast.makeText(appContext, "Couldn't read that file", Toast.LENGTH_SHORT).show()
+                    } else {
+                        deliver(text)
+                        Toast.makeText(appContext, "Lyrics file loaded for this song", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
             val undoHost = remember { SnackbarHostState() }
             val undoScope = rememberCoroutineScope()
             CompositionLocalProvider(
@@ -198,7 +255,12 @@ class MainActivity : ComponentActivity() {
                 LocalSleepTimer provides SleepTimerManager,
                 LocalLyrics provides lyricsRepository(appContext),
                 LocalArtworkColors provides remember { AndroidArtworkColors(appContext) },
-                LocalSongInfo provides remember { AndroidSongInfo(appContext, libraryViewModel.playlists) }
+                LocalSongInfo provides remember { AndroidSongInfo(appContext, libraryViewModel.playlists) },
+                LocalEditSong provides { song -> songToEdit.value = song },
+                LocalPickTextFile provides { onPicked ->
+                    onTextPicked = onPicked
+                    pickTextFile.launch(arrayOf("*/*"))
+                }
             ) {
             WildMusicPlayerTheme(themeMode = currentTheme, accent = accent, wallpaperScheme = wallpaperScheme) {
                 // Status bar icons follow the app's own theme: dark icons on the light theme, even when
@@ -222,6 +284,9 @@ class MainActivity : ComponentActivity() {
                         currentAccent = accent,
                         onThemeChanged = { newTheme -> settings.setThemeMode(newTheme.name) },
                         undoHost = undoHost,
+                        shortcutTarget = shortcutTarget.value,
+                        editSongState = songToEdit,
+                        onShortcutHandled = { shortcutTarget.value = null },
                         onExitApp = {
                             controllerManager.stopAndShutdown()
                             finishAffinity()
@@ -243,6 +308,9 @@ fun MusicPlayerApp(
     currentAccent: AccentColor,
     onThemeChanged: (ThemeMode) -> Unit,
     undoHost: SnackbarHostState,
+    shortcutTarget: String? = null,
+    onShortcutHandled: () -> Unit = {},
+    editSongState: MutableState<Song?> = remember { mutableStateOf(null) },
     onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
@@ -364,6 +432,27 @@ fun MusicPlayerApp(
     val recentlyPlayedSongs by library.recentlyPlayedSongs.collectAsState()
     val favoriteSongs by library.favoriteSongs.collectAsState()
 
+    // An app icon shortcut: play it once the library has loaded, and show the player
+    LaunchedEffect(shortcutTarget, songs) {
+        val key = shortcutTarget ?: return@LaunchedEffect
+        if (songs.isEmpty()) return@LaunchedEffect
+        onShortcutHandled()
+        val target = PlayTarget.fromKey(key) ?: return@LaunchedEffect
+        val toPlay = target.songs(songs, favoriteSongIds, playCounts, customPlaylists)
+        if (toPlay.isEmpty()) {
+            val gone = target is PlayTarget.CustomPlaylist && customPlaylists.none { it.id == target.id }
+            if (gone) AppShortcuts.forgetPlaylist(context)
+            Toast.makeText(
+                context,
+                if (gone) "That playlist doesn't exist anymore" else "Nothing to play in ${target.label(customPlaylists)} yet",
+                Toast.LENGTH_SHORT
+            ).show()
+            return@LaunchedEffect
+        }
+        library.playPlaylist(toPlay, shuffle = target == PlayTarget.ShuffleAll)
+        isPlayerExpanded = true
+    }
+
     val toggleFavorite: (Long) -> Unit = { songId ->
         if (!library.toggleFavorite(songId)) {
             Toast.makeText(context, "Download this track to add it to Favorites", Toast.LENGTH_SHORT).show()
@@ -373,6 +462,50 @@ fun MusicPlayerApp(
     val playSong: (Song, List<Song>) -> Unit = library::playSong
     val shuffleAll: () -> Unit = library::shuffleAll
     val playPlaylist: (List<Song>, Boolean) -> Unit = library::playPlaylist
+
+    // ---- Editing a song's details (title, artist, album, cover) ----
+    val songEditor = remember { SongEditor(context) }
+    var songToEdit by editSongState
+    var editAwaitingPermission by remember { mutableStateOf<SongEdit?>(null) }
+    val editPermissionLauncherRef = remember { mutableStateOf<ActivityResultLauncher<IntentSenderRequest>?>(null) }
+
+    fun saveEdit(edit: SongEdit) {
+        scope.launch {
+            when (val result = songEditor.save(edit.song, edit.title, edit.artist, edit.album, edit.coverJpeg)) {
+                SongEditor.Result.Saved -> {
+                    Toast.makeText(context, "Saved \"${edit.title}\"", Toast.LENGTH_SHORT).show()
+                    // Give MediaStore a moment to read the file again
+                    delay(1500)
+                    library.reload()
+                }
+                is SongEditor.Result.NeedsPermission -> {
+                    editAwaitingPermission = edit
+                    editPermissionLauncherRef.value?.launch(IntentSenderRequest.Builder(result.intentSender).build())
+                }
+                SongEditor.Result.Failed ->
+                    Toast.makeText(context, "Couldn't change this file", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val editPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val edit = editAwaitingPermission
+        editAwaitingPermission = null
+        if (edit != null && result.resultCode == android.app.Activity.RESULT_OK) saveEdit(edit)
+    }
+    editPermissionLauncherRef.value = editPermissionLauncher
+
+    // Android 11+ asks first for files the app didn't create
+    val requestSaveEdit: (SongEdit) -> Unit = { edit ->
+        songToEdit = null
+        val request = songEditor.writeRequest(edit.song)
+        if (request != null) {
+            editAwaitingPermission = edit
+            editPermissionLauncher.launch(IntentSenderRequest.Builder(request).build())
+        } else {
+            saveEdit(edit)
+        }
+    }
 
     // ---- Deleting songs from the phone ----
     val songDeleter = remember { SongDeleter(context) }
@@ -582,6 +715,7 @@ fun MusicPlayerApp(
                             onAccentSelected = {
                                 library.settings.setAccentColor(it.name)
                                 PlayerWidget.renderAll(context)
+                                PlaylistWidget.renderAll(context)
                             },
                             onThemeSelected = { newTheme ->
                                 onThemeChanged(newTheme)
@@ -662,7 +796,8 @@ fun MusicPlayerApp(
                                 onSongClick = playSong,
                                 onToggleFavorite = { playlistRepository.toggleFavorite(it) },
                                 onDeleteSong = requestDeleteSong,
-                                onAddToPlaylist = { songForPlaylistPicker = it }
+                                onAddToPlaylist = { songForPlaylistPicker = it },
+                                onPlayGroup = playPlaylist
                             )
                         }
                         NavigationTab.PLAYLISTS -> {
@@ -676,7 +811,10 @@ fun MusicPlayerApp(
                                 onPlayPlaylist = playPlaylist,
                                 onToggleFavorite = toggleFavorite,
                                 onCreatePlaylist = { name, songIds -> playlistRepository.createPlaylist(name, songIds) },
-                                onDeletePlaylist = { playlistRepository.deletePlaylist(it) },
+                                onDeletePlaylist = { id ->
+                                    playlistRepository.deletePlaylist(id)
+                                    AppShortcuts.onPlaylistChanged(context, id, renamed = null)
+                                },
                                 downloadIndex = library.downloadIndex,
                                 isOfflineOnlyMode = isOfflineOnlyMode,
                                 downloader = trackDownloader,
@@ -687,11 +825,18 @@ fun MusicPlayerApp(
                                 onAddToPlaylist = { songForPlaylistPicker = it },
                                 onRemoveSongFromPlaylist = { playlistId, songId -> playlistRepository.removeSongFromPlaylist(playlistId, songId) },
                                 onExportPlaylist = exportPlaylist,
-                                onRenamePlaylist = playlistRepository::renamePlaylist,
+                                onRenamePlaylist = { id, name ->
+                                    playlistRepository.renamePlaylist(id, name)
+                                    customPlaylists.firstOrNull { it.id == id }?.let { old ->
+                                        AppShortcuts.onPlaylistChanged(context, id, renamed = old.copy(name = name))
+                                    }
+                                    PlaylistWidget.renderAll(context)
+                                },
                                 playCounts = playCounts,
                                 onRestoreSongToPlaylist = playlistRepository::insertSongInPlaylist,
                                 onRestoreOnlineTrack = playlistRepository::insertOnlineTrackInPlaylist,
-                                onReorderPlaylist = playlistRepository::reorderPlaylist
+                                onReorderPlaylist = playlistRepository::reorderPlaylist,
+                                onPlaylistPlayed = { AppShortcuts.rememberPlaylist(context, it) }
                             )
                         }
                         NavigationTab.DOWNLOADER -> {
@@ -766,6 +911,16 @@ fun MusicPlayerApp(
         // Registered each time the player expands, so it is the newest handler and always collapses first
         if (isPlayerExpanded) {
             BackHandler { isPlayerExpanded = false }
+        }
+
+        // "Edit details…" from a song's ⋮ menu
+        songToEdit?.let { song ->
+            EditSongDialog(
+                song = song,
+                format = songEditor.formatOf(song),
+                onSave = requestSaveEdit,
+                onDismiss = { songToEdit = null }
+            )
         }
 
         // "Add to playlist…" from a song's ⋮ menu

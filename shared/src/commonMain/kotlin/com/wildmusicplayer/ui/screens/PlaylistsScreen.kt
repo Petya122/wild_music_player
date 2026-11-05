@@ -149,7 +149,9 @@ fun PlaylistsScreen(
     onRestoreOnlineTrack: ((playlistId: String, track: OnlineTrack, index: Int) -> Unit)? = null,
     onReorderPlaylist: ((playlistId: String, songIds: List<Long>, onlineTrackIds: List<String>) -> Unit)? = null,
     // How often each song was played, for the automatic "Most Played" playlist
-    playCounts: Map<Long, Int> = emptyMap()
+    playCounts: Map<Long, Int> = emptyMap(),
+    // A custom playlist started playing (for the app icon's "last playlist" shortcut)
+    onPlaylistPlayed: (Playlist) -> Unit = {}
 ) {
     val mostPlayedSongs = remember(allSongs, playCounts) {
         allSongs.filter { (playCounts[it.id] ?: 0) > 0 }
@@ -575,9 +577,18 @@ fun PlaylistsScreen(
                 currentPlayingSongId = currentPlayingSongId,
                 bottomPadding = bottomPadding,
                 onBack = { selectedPlaylist = PlaylistSelection.None },
-                onSongClick = { song -> onSongClick(song, playQueue) },
-                onPlayAll = { onPlayPlaylist(playQueue, false) },
-                onShuffleAll = { onPlayPlaylist(playQueue, true) },
+                onSongClick = { song ->
+                    onSongClick(song, playQueue)
+                    onPlaylistPlayed(playlist)
+                },
+                onPlayAll = {
+                    onPlayPlaylist(playQueue, false)
+                    onPlaylistPlayed(playlist)
+                },
+                onShuffleAll = {
+                    onPlayPlaylist(playQueue, true)
+                    onPlaylistPlayed(playlist)
+                },
                 onToggleFavorite = onToggleFavorite,
                 onDeleteSong = onDeleteSong,
                 onAddToPlaylist = onAddToPlaylist,

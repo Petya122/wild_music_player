@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.components
 
+import com.wildmusicplayer.ui.LocalPickTextFile
 import androidx.compose.foundation.background
 import com.wildmusicplayer.ui.LocalArtworkColors
 import androidx.compose.ui.graphics.lerp
@@ -120,6 +121,28 @@ fun NowPlayingScreen(
         if (showLyrics && lyricsRepository != null) lyrics = lyricsRepository.lyricsFor(song)
     }
     val lyricsScope = rememberCoroutineScope()
+    val pickTextFile = LocalPickTextFile.current
+    // A .lrc file the user picks becomes this song's lyrics (for the song shown when they asked)
+    val onLoadOwnLyrics: (() -> Unit)? = if (pickTextFile != null && lyricsRepository != null) {
+        {
+            val forSong = song
+            pickTextFile { text ->
+                lyricsScope.launch {
+                    lyricsRepository.saveOwnLyrics(forSong, text)
+                    if (forSong.mediaId == song.mediaId) lyrics = lyricsRepository.lyricsFor(forSong)
+                }
+            }
+        }
+    } else null
+    val onRemoveOwnLyrics: (() -> Unit)? = lyricsRepository?.let { repository ->
+        {
+            lyricsScope.launch {
+                repository.removeOwnLyrics(song)
+                lyrics = null
+                lyrics = repository.lyricsFor(song)
+            }
+        }
+    }
     // The user's timing fix: shown at once, saved with the song's lyrics
     val onLyricsTimingChange: ((Long) -> Unit)? = lyricsRepository?.let { repository ->
         { offsetMs ->
@@ -256,7 +279,9 @@ fun NowPlayingScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                            onTimingChange = onLyricsTimingChange
+                            onTimingChange = onLyricsTimingChange,
+                            onLoadOwnFile = onLoadOwnLyrics,
+                            onRemoveOwnFile = onRemoveOwnLyrics
                         )
                     } else {
                         SongThumbnail(

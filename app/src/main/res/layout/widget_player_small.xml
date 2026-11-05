@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 4x1 widget: cover, title and artist, previous / play-pause / next -->
+<!-- 4x1 widget: cover, title and artist, previous / play-pause / next; a thin progress line at the bottom -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
+    android:orientation="vertical">
+
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="10dp"
@@ -72,4 +78,16 @@
         android:contentDescription="Next"
         android:padding="6dp"
         android:src="@drawable/ic_widget_next" />
+</LinearLayout>
+
+<ProgressBar
+    android:id="@+id/widget_progress"
+    style="?android:attr/progressBarStyleHorizontal"
+    android:layout_width="match_parent"
+    android:layout_height="2dp"
+    android:layout_marginStart="14dp"
+    android:layout_marginEnd="14dp"
+    android:layout_marginBottom="4dp"
+    android:max="1000"
+    android:progress="0" />
 </LinearLayout>

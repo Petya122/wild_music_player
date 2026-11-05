@@ -9,4 +9,9 @@
     <string name="widget_description">Now playing, with play/pause and skip buttons</string>
     <string name="widget_nothing_playing">Nothing playing</string>
     <string name="widget_tap_to_open">Tap to open Wild Music Player</string>
+    <string name="player_widget_name">Wild Music player</string>
+    <string name="playlist_widget_name">Wild Music playlist</string>
+    <string name="playlist_widget_description">Plays a playlist of your choice in one tap</string>
+    <string name="playlist_widget_tap_to_play">Tap to play</string>
+    <string name="playlist_widget_tap_to_shuffle">Tap to shuffle</string>
 </resources>

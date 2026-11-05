@@ -137,7 +137,8 @@ class Mp4TagWriterTest {
         val read = Mp4TagWriter.readTags(second)
         assertEquals("New Title", read["©nam"])
         assertEquals("New Artist", read["©ART"])
-        assertFalse(read.containsKey("covr"))
+        // No new cover given: the old one stays (editing a song's name mustn't lose its cover)
+        assertEquals("300 bytes", read["covr"])
 
         val bytes = second.readBytes()
         val offsets = findStco(bytes)!!

@@ -1,5 +1,7 @@
 package com.wildmusicplayer.ui.screens
 
+import androidx.compose.material.icons.outlined.Edit
+import com.wildmusicplayer.ui.LocalEditSong
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.outlined.Info
@@ -290,6 +292,7 @@ fun SongRowItem(
     val queueActions = LocalQueueActions.current
     val showMessage = LocalShowMessage.current
     val songInfo = LocalSongInfo.current
+    val editSong = LocalEditSong.current?.takeIf { !song.isOnline }
     if (showInfo && songInfo != null) {
         SongInfoDialog(song = song, source = songInfo, onDismiss = { showInfo = false })
     }
@@ -344,7 +347,7 @@ fun SongRowItem(
             )
         }
 
-        if (queueActions != null || onDelete != null || onAddToPlaylist != null || onRemoveFromPlaylist != null || songInfo != null) {
+        if (queueActions != null || onDelete != null || onAddToPlaylist != null || onRemoveFromPlaylist != null || songInfo != null || editSong != null) {
             Box {
                 IconButton(
                     onClick = { menuOpen = true },
@@ -403,6 +406,16 @@ fun SongRowItem(
                             onClick = {
                                 menuOpen = false
                                 onRemoveFromPlaylist()
+                            }
+                        )
+                    }
+                    if (editSong != null) {
+                        DropdownMenuItem(
+                            text = { Text("Edit details\u2026") },
+                            leadingIcon = { Icon(imageVector = Icons.Outlined.Edit, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                editSong(song)
                             }
                         )
                     }

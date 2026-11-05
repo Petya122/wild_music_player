@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.components
 
+import com.wildmusicplayer.lyrics.LyricsSource
 import androidx.compose.foundation.clickable
 import com.wildmusicplayer.ui.LocalShowMessage
 import androidx.compose.material3.TextButton
@@ -53,9 +54,13 @@ fun LyricsView(
     isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
-    onTimingChange: ((offsetMs: Long) -> Unit)? = null
+    onTimingChange: ((offsetMs: Long) -> Unit)? = null,
+    // The user's own .lrc file for this song: load one, or go back to the found lyrics
+    onLoadOwnFile: (() -> Unit)? = null,
+    onRemoveOwnFile: (() -> Unit)? = null
 ) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    Column(modifier = modifier) {
+    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
         when (lyrics) {
             null -> CircularProgressIndicator()
             is LyricsResult.Synced ->
@@ -74,6 +79,40 @@ fun LyricsView(
             LyricsResult.NotFound -> Message("No lyrics found for this song")
             LyricsResult.Offline -> Message("Lyrics for this song aren't saved yet.\nTurn off Offline Mode to look them up.")
             LyricsResult.Failed -> Message("Couldn't reach the lyrics service.\nCheck your connection and try again.")
+        }
+    }
+    if (lyrics != null) LyricsSourceBar(lyrics, onLoadOwnFile, onRemoveOwnFile)
+    }
+}
+
+/** Where the lyrics come from, and loading / removing the user's own .lrc file. */
+@Composable
+private fun LyricsSourceBar(lyrics: LyricsResult, onLoadOwnFile: (() -> Unit)?, onRemoveOwnFile: (() -> Unit)?) {
+    val source = when (lyrics) {
+        is LyricsResult.Synced -> lyrics.source
+        is LyricsResult.Plain -> lyrics.source
+        else -> null
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        when {
+            source == LyricsSource.OWN_FILE -> {
+                Text("Your lyrics file", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                if (onRemoveOwnFile != null) TextButton(onClick = onRemoveOwnFile) { Text("Remove") }
+            }
+            source == LyricsSource.FOLDER ->
+                Text(
+                    "From your lyrics folder",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(vertical = 12.dp)
+                )
+            onLoadOwnFile != null -> TextButton(onClick = onLoadOwnFile) {
+                Text("Use my own .lrc file\u2026", style = MaterialTheme.typography.labelMedium)
+            }
         }
     }
 }

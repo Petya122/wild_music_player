@@ -38,6 +38,18 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.5", listOf(
+            ChangelogEntry("🚗", "Car Sound Profile", "Each Bluetooth device keeps its own volume, dB boost, normalization, equalizer and crossfade. Set the sound up once in the car; your headphones and the phone keep theirs. The Sound sheet shows whose settings you're changing. Off in Settings → Car & Bluetooth."),
+            ChangelogEntry("🔀", "Shuffle & Repeat in the Notification", "The notification and lock screen player got shuffle and repeat buttons. Android fits two there, so the heart now lives in the app and on the widget (it still shows at the end of the queue)."),
+            ChangelogEntry("▶️", "Playlist Widget", "Long-press the home screen → Widgets → Wild Music playlist. Pick a playlist, Favorites, Most Played or Shuffle all; one tap plays it, even with the app closed. Long-press it later to change it."),
+            ChangelogEntry("🏠", "Bigger Player Widget", "Stretch the player widget taller for shuffle and favorite buttons; both sizes show how far into the song you are."),
+            ChangelogEntry("📌", "App Icon Shortcuts", "Long-press the app icon: Shuffle all, Favorites, or the playlist you played last."),
+            ChangelogEntry("✏️", "Edit Song Details", "⋮ → Edit details: fix the title, artist, album or cover of an MP3 or M4A. It's saved into the file, so the car shows it right too."),
+            ChangelogEntry("🎤", "Your Own Lyrics", "Settings → Lyrics → choose your lyrics folder: .lrc files named like the song are used instead of the online ones. Or load a .lrc for one song in the lyrics view."),
+            ChangelogEntry("🔍", "Search Albums & Artists", "Search shows matching artists and albums above the songs; tap one to play it all.")
+        )
+    ),
+    ReleaseNotes(
         "0.9.4", listOf(
             ChangelogEntry("💿", "Albums & Artists", "Songs tab → Albums shows your album covers in a grid, Artists lists everyone in your library. Open one to play it in order or shuffled. Albums play in their track order."),
             ChangelogEntry("📁", "Folders", "Songs tab → Folders lists the folders your music is in, with where they are on the phone. Two folders with the same name (like two \"Music\" folders) are now kept apart, also in Playlists."),

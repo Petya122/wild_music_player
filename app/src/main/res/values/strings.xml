@@ -3,4 +3,6 @@
     <string name="tile_label">Wild Music</string>
     <string name="tile_paused">Paused</string>
     <string name="tile_tap_to_play">Tap to play</string>
+    <string name="shortcut_shuffle_all">Shuffle all</string>
+    <string name="shortcut_favorites">Favorites</string>
 </resources>

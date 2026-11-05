@@ -3,14 +3,28 @@ package com.wildmusicplayer.lyrics
 /** One line of synced lyrics, shown from [timeMs] on. Empty text is an instrumental gap. */
 data class LyricLine(val timeMs: Long, val text: String)
 
+/** Where a song's lyrics came from. */
+enum class LyricsSource {
+    /** LRCLIB, looked up online. */
+    ONLINE,
+    /** A .lrc file in the lyrics folder the user picked. */
+    FOLDER,
+    /** A .lrc file the user loaded for this one song. */
+    OWN_FILE
+}
+
 /** What the lyrics view shows for a song. */
 sealed interface LyricsResult {
     /**
      * [offsetMs] is the user's own timing fix for this song: positive shows every line later, negative
      * earlier. The lines keep their original times; the view adds the offset.
      */
-    data class Synced(val lines: List<LyricLine>, val offsetMs: Long = 0L) : LyricsResult
-    data class Plain(val text: String) : LyricsResult
+    data class Synced(
+        val lines: List<LyricLine>,
+        val offsetMs: Long = 0L,
+        val source: LyricsSource = LyricsSource.ONLINE
+    ) : LyricsResult
+    data class Plain(val text: String, val source: LyricsSource = LyricsSource.ONLINE) : LyricsResult
     data object Instrumental : LyricsResult
     data object NotFound : LyricsResult
     /** Offline Mode is on and this song's lyrics were never saved. */

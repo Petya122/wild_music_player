@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon: play straight away. The last played playlist is added by the app (AppShortcuts). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="shuffle_all"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_shuffle"
+        android:shortcutShortLabel="@string/shortcut_shuffle_all">
+        <intent
+            android:action="com.wildmusicplayer.PLAY"
+            android:targetPackage="com.wildmusicplayer"
+            android:targetClass="com.wildmusicplayer.MainActivity">
+            <extra android:name="com.wildmusicplayer.PLAY_TARGET" android:value="shuffle_all" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="favorites"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_favorite"
+        android:shortcutShortLabel="@string/shortcut_favorites">
+        <intent
+            android:action="com.wildmusicplayer.PLAY"
+            android:targetPackage="com.wildmusicplayer"
+            android:targetClass="com.wildmusicplayer.MainActivity">
+            <extra android:name="com.wildmusicplayer.PLAY_TARGET" android:value="favorites" />
+        </intent>
+    </shortcut>
+</shortcuts>

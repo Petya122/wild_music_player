@@ -28,7 +28,8 @@ fun lyricsRepository(context: Context): LyricsRepository =
                 cache = AndroidFileStore(dir),
                 http = OkHttpGet,
                 isOffline = { network.isOfflineOnlyMode },
-                now = System::currentTimeMillis
+                now = System::currentTimeMillis,
+                localFiles = LyricsFolder.getInstance(appContext)
             ).also { lyricsInstance = it }
         }
     }

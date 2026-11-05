@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One tap plays a playlist (or Favorites, Most Played, Shuffle all), picked when the widget is placed -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="com.wildmusicplayer.widget.PlaylistWidgetConfigActivity"
+    android:description="@string/playlist_widget_description"
+    android:initialLayout="@layout/widget_playlist"
+    android:previewLayout="@layout/widget_playlist"
+    android:minWidth="180dp"
+    android:minHeight="48dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
+    android:resizeMode="horizontal"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable" />

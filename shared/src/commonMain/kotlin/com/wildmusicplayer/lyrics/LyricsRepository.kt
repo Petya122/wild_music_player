@@ -20,6 +20,11 @@ fun interface HttpGet {
     suspend fun get(url: String): HttpResult?
 }
 
+/** The text of a .lrc file for [song] in the user's lyrics folder, or null. Provided by each platform. */
+fun interface LocalLyricsFiles {
+    suspend fun lrcFor(song: Song): String?
+}
+
 /**
  * Song lyrics from LRCLIB (lrclib.net: free, no account). Synced lyrics are preferred, plain text
  * otherwise. Every answer, "no lyrics" included, is saved in [cache], so a song is only looked up once
@@ -30,15 +35,24 @@ class LyricsRepository(
     private val cache: FileStore,
     private val http: HttpGet,
     private val isOffline: () -> Boolean,
-    private val now: () -> Long
+    private val now: () -> Long,
+    private val localFiles: LocalLyricsFiles? = null
 ) {
 
+    /**
+     * The song's lyrics, best first: a .lrc file the user loaded for it, one in their lyrics folder,
+     * then LRCLIB. The user's timing fix applies to all of them.
+     */
     suspend fun lyricsFor(song: Song): LyricsResult {
         val query = LyricsQuery.of(song)
         val fileName = query.cacheFileName()
 
-        val saved = withContext(Dispatchers.Default) { cache.readText(fileName) }
-            ?.let { runCatching { json.decodeFromString(SavedLyrics.serializer(), it) }.getOrNull() }
+        val saved = readSaved(fileName)
+        if (saved?.own == true) return saved.toResult(LyricsSource.OWN_FILE)
+        val folderLrc = localFiles?.let { files -> runCatching { files.lrcFor(song) }.getOrNull() }
+        if (!folderLrc.isNullOrBlank()) {
+            return SavedLyrics.fromLrcText(folderLrc).copy(offsetMs = saved?.offsetMs ?: 0L).toResult(LyricsSource.FOLDER)
+        }
         if (saved != null && (saved.hasAnswer || now() - saved.savedAt < RETRY_NOT_FOUND_MS)) {
             return saved.toResult()
         }
@@ -58,10 +72,26 @@ class LyricsRepository(
         val fileName = LyricsQuery.of(song).cacheFileName()
         val saved = cache.readText(fileName)
             ?.let { runCatching { json.decodeFromString(SavedLyrics.serializer(), it) }.getOrNull() }
-            ?: return@withContext
+            // Lyrics from the folder aren't saved: keep just the timing fix
+            ?: SavedLyrics()
         val updated = saved.copy(offsetMs = offsetMs.coerceIn(-MAX_OFFSET_MS, MAX_OFFSET_MS))
         cache.writeText(fileName, json.encodeToString(SavedLyrics.serializer(), updated))
     }
+
+    /** Uses the text of a .lrc (or plain .txt) file the user picked as [song]'s lyrics, from now on. */
+    suspend fun saveOwnLyrics(song: Song, text: String) = withContext(Dispatchers.Default) {
+        val own = SavedLyrics.fromLrcText(text).copy(own = true, savedAt = now())
+        cache.writeText(LyricsQuery.of(song).cacheFileName(), json.encodeToString(SavedLyrics.serializer(), own))
+    }
+
+    /** Forgets the user's own lyrics for [song]: the next look is online (or in the lyrics folder) again. */
+    suspend fun removeOwnLyrics(song: Song) = withContext(Dispatchers.Default) {
+        cache.delete(LyricsQuery.of(song).cacheFileName())
+    }
+
+    private suspend fun readSaved(fileName: String): SavedLyrics? =
+        withContext(Dispatchers.Default) { cache.readText(fileName) }
+            ?.let { runCatching { json.decodeFromString(SavedLyrics.serializer(), it) }.getOrNull() }
 
     /** The best lyrics LRCLIB has (an empty [SavedLyrics] when it has none), or null when it couldn't be asked. */
     private suspend fun lookUp(query: LyricsQuery): SavedLyrics? {
@@ -193,15 +223,29 @@ internal data class SavedLyrics(
     val instrumental: Boolean = false,
     val savedAt: Long = 0L,
     /** The user's timing fix (see [LyricsResult.Synced.offsetMs]). */
-    val offsetMs: Long = 0L
+    val offsetMs: Long = 0L,
+    /** Lyrics from a file the user loaded for this song: never replaced by a lookup. */
+    val own: Boolean = false
 ) {
     val hasAnswer: Boolean get() = instrumental || !synced.isNullOrBlank() || !plain.isNullOrBlank()
 
-    fun toResult(): LyricsResult {
+    companion object {
+        /** A .lrc file's text: timed lines become synced lyrics, anything else is shown as plain text. */
+        fun fromLrcText(text: String): SavedLyrics {
+            val lines = parseLrc(text)
+            return if (lines.isNotEmpty()) {
+                SavedLyrics(synced = text, plain = lines.joinToString("\n") { it.text })
+            } else {
+                SavedLyrics(plain = text.trim().takeIf { it.isNotEmpty() })
+            }
+        }
+    }
+
+    fun toResult(source: LyricsSource = LyricsSource.ONLINE): LyricsResult {
         val lines = synced?.let { parseLrc(it) }.orEmpty()
         return when {
-            lines.isNotEmpty() -> LyricsResult.Synced(lines, offsetMs)
-            !plain.isNullOrBlank() -> LyricsResult.Plain(plain.trim())
+            lines.isNotEmpty() -> LyricsResult.Synced(lines, offsetMs, source)
+            !plain.isNullOrBlank() -> LyricsResult.Plain(plain.trim(), source)
             instrumental -> LyricsResult.Instrumental
             else -> LyricsResult.NotFound
         }

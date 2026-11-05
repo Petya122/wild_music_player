@@ -1,5 +1,13 @@
 package com.wildmusicplayer.data
 
+import com.wildmusicplayer.platform.soundProfileKey
+import com.wildmusicplayer.platform.soundProfileId
+import android.os.Looper
+import android.os.Handler
+import android.os.Build
+import android.media.AudioManager
+import android.media.AudioDeviceInfo
+import android.media.AudioDeviceCallback
 import com.wildmusicplayer.platform.AudioEffects
 import com.wildmusicplayer.platform.EqualizerSettings
 import com.wildmusicplayer.platform.EqualizerState
@@ -72,6 +80,87 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
     private var equalizerEffect: Equalizer? = null
     private var unmutedVolumeCache: Float = prefs.getFloat(KEY_LAST_UNMUTED_VOL, 1.0f)
 
+    // ---- Sound settings per Bluetooth device ----
+
+    // The profile in use: null = the phone's own settings, otherwise a Bluetooth device's
+    private var profileId: String? = null
+
+    /** The saved name of a setting in the profile in use. */
+    private fun k(key: String) = soundProfileKey(key, profileId)
+
+    private val _soundProfileName = MutableStateFlow<String?>(null)
+    override val soundProfileName: StateFlow<String?> = _soundProfileName.asStateFlow()
+
+    private val _perDeviceSound = MutableStateFlow(prefs.getBoolean(KEY_PER_DEVICE, true))
+    /** Whether each Bluetooth device keeps its own sound settings (Settings → Car & Bluetooth). */
+    val perDeviceSound: StateFlow<Boolean> = _perDeviceSound.asStateFlow()
+
+    fun setPerDeviceSound(enabled: Boolean) {
+        _perDeviceSound.value = enabled
+        prefs.edit().putBoolean(KEY_PER_DEVICE, enabled).apply()
+        followConnectedDevice()
+    }
+
+    private val audioManager: AudioManager? = appContext.getSystemService(AudioManager::class.java)
+
+    // Called with the devices already connected when registered, then on every change
+    private val deviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = followConnectedDevice()
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = followConnectedDevice()
+    }
+
+    init {
+        audioManager?.registerAudioDeviceCallback(deviceCallback, Handler(Looper.getMainLooper()))
+    }
+
+    /** Uses the settings of the Bluetooth audio device connected last, or the phone's when there's none. */
+    private fun followConnectedDevice() {
+        val device = if (_perDeviceSound.value) {
+            audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                ?.lastOrNull { it.isSink && it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+        } else null
+        val name = device?.productName?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        val address = if (device != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) device.address else null
+        useProfile(device?.let { soundProfileId(name, address) }, name ?: "Bluetooth device")
+    }
+
+    private fun useProfile(id: String?, name: String) {
+        _soundProfileName.value = if (id == null) null else name
+        if (id == profileId) return
+        profileId = id
+        // A device's first time: it starts with the settings in use now, so nothing changes until adjusted
+        if (id != null && !prefs.getBoolean(k(KEY_PROFILE_SAVED), false)) saveAllToProfile()
+        loadProfile()
+    }
+
+    private fun saveAllToProfile() {
+        prefs.edit()
+            .putFloat(k(KEY_VOLUME), _volume.value)
+            .putBoolean(k(KEY_IS_MUTED), _isMuted.value)
+            .putFloat(k(KEY_LAST_UNMUTED_VOL), unmutedVolumeCache)
+            .putInt(k(KEY_BOOST_DB), _volumeBoostDb.value)
+            .putBoolean(k(KEY_NORMALIZATION), _isNormalizationEnabled.value)
+            .putString(k(KEY_EQUALIZER), eqSettings.encode())
+            .putInt(k(KEY_CROSSFADE), _crossfadeSeconds.value)
+            .putBoolean(k(KEY_PROFILE_SAVED), true)
+            .apply()
+    }
+
+    private fun loadProfile() {
+        _volume.value = prefs.getFloat(k(KEY_VOLUME), 1.0f)
+        _isMuted.value = prefs.getBoolean(k(KEY_IS_MUTED), false)
+        unmutedVolumeCache = prefs.getFloat(k(KEY_LAST_UNMUTED_VOL), 1.0f)
+        _volumeBoostDb.value = prefs.getInt(k(KEY_BOOST_DB), 0)
+        val normalization = prefs.getBoolean(k(KEY_NORMALIZATION), false)
+        _isNormalizationEnabled.value = normalization
+        eqSettings = EqualizerSettings.decode(prefs.getString(k(KEY_EQUALIZER), null))
+        _crossfadeSeconds.value = prefs.getInt(k(KEY_CROSSFADE), 0).coerceIn(0, com.wildmusicplayer.platform.MAX_CROSSFADE_SECONDS)
+        if (normalization) com.wildmusicplayer.service.LoudnessAnalysisWorker.enqueue(appContext)
+        applyVolumeToPlayer()
+        applyDspEnhancements()
+        applyEqualizer()
+    }
+
     private val playerListener = object : Player.Listener {
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
             setupLoudnessEnhancer(audioSessionId)
@@ -92,25 +181,25 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         _volume.value = clamped
         if (clamped > 0f && _isMuted.value) {
             _isMuted.value = false
-            prefs.edit().putBoolean(KEY_IS_MUTED, false).apply()
+            prefs.edit().putBoolean(k(KEY_IS_MUTED), false).apply()
         }
         if (clamped > 0f) {
             unmutedVolumeCache = clamped
-            prefs.edit().putFloat(KEY_LAST_UNMUTED_VOL, clamped).apply()
+            prefs.edit().putFloat(k(KEY_LAST_UNMUTED_VOL), clamped).apply()
         }
-        prefs.edit().putFloat(KEY_VOLUME, clamped).apply()
+        prefs.edit().putFloat(k(KEY_VOLUME), clamped).apply()
         applyVolumeToPlayer()
     }
 
     override fun toggleMute() {
         val nextMuted = !_isMuted.value
         _isMuted.value = nextMuted
-        prefs.edit().putBoolean(KEY_IS_MUTED, nextMuted).apply()
+        prefs.edit().putBoolean(k(KEY_IS_MUTED), nextMuted).apply()
 
         if (!nextMuted && _volume.value <= 0f) {
             val restored = if (unmutedVolumeCache > 0f) unmutedVolumeCache else 1.0f
             _volume.value = restored
-            prefs.edit().putFloat(KEY_VOLUME, restored).apply()
+            prefs.edit().putFloat(k(KEY_VOLUME), restored).apply()
         }
 
         applyVolumeToPlayer()
@@ -119,13 +208,13 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
     override fun setVolumeBoostDb(db: Int) {
         val clamped = db.coerceIn(0, MAX_BOOST_DB)
         _volumeBoostDb.value = clamped
-        prefs.edit().putInt(KEY_BOOST_DB, clamped).apply()
+        prefs.edit().putInt(k(KEY_BOOST_DB), clamped).apply()
         applyDspEnhancements()
     }
 
     override fun setNormalizationEnabled(enabled: Boolean) {
         _isNormalizationEnabled.value = enabled
-        prefs.edit().putBoolean(KEY_NORMALIZATION, enabled).apply()
+        prefs.edit().putBoolean(k(KEY_NORMALIZATION), enabled).apply()
         // Measure the library in the background so every song has a level to even out to
         if (enabled) com.wildmusicplayer.service.LoudnessAnalysisWorker.enqueue(appContext)
         applyVolumeToPlayer()
@@ -146,14 +235,14 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
 
     private fun saveEqualizer(settings: EqualizerSettings) {
         eqSettings = settings
-        prefs.edit().putString(KEY_EQUALIZER, settings.encode()).apply()
+        prefs.edit().putString(k(KEY_EQUALIZER), settings.encode()).apply()
         applyEqualizer()
     }
 
     override fun setCrossfadeSeconds(seconds: Int) {
         val clamped = seconds.coerceIn(0, com.wildmusicplayer.platform.MAX_CROSSFADE_SECONDS)
         _crossfadeSeconds.value = clamped
-        prefs.edit().putInt(KEY_CROSSFADE, clamped).apply()
+        prefs.edit().putInt(k(KEY_CROSSFADE), clamped).apply()
     }
 
     /** Called by the crossfade while the next song fades in. */
@@ -291,6 +380,8 @@ class AudioEffectsManager private constructor(context: Context) : AudioEffects {
         private const val KEY_NORMALIZATION = "pref_audio_normalization"
         private const val KEY_EQUALIZER = "pref_equalizer"
         private const val KEY_CROSSFADE = "pref_crossfade_seconds"
+        private const val KEY_PROFILE_SAVED = "pref_profile_saved"
+        private const val KEY_PER_DEVICE = "pref_sound_per_bluetooth_device"
 
         // Matches the largest preset offered in SoundSettingsSheet
         const val MAX_BOOST_DB = 12

@@ -23,6 +23,12 @@ interface AudioEffects {
     fun useEqualizerPreset(index: Int) {}
     fun setEqualizerBandLevel(band: Int, levelMb: Int) {}
 
+    /**
+     * The Bluetooth device whose own sound settings are in use ("Nissan Connect"), or null for the phone's.
+     * Null flow where sound isn't kept per device.
+     */
+    val soundProfileName: StateFlow<String?>? get() = null
+
     /** How many seconds songs fade into each other; 0 = off. Null where crossfade isn't supported. */
     val crossfadeSeconds: StateFlow<Int>? get() = null
     fun setCrossfadeSeconds(seconds: Int) {}
@@ -64,4 +70,16 @@ data class EqualizerSettings(
             )
         }
     }
+}
+
+/**
+ * Where a sound setting is saved: the phone's under its plain name (as before 0.9.5), a Bluetooth device's
+ * as "name@profile".
+ */
+fun soundProfileKey(baseKey: String, profileId: String?): String = if (profileId == null) baseKey else "$baseKey@$profileId"
+
+/** A Bluetooth device's sound profile: by its address when the phone tells it, otherwise by its name. */
+fun soundProfileId(deviceName: String?, address: String?): String {
+    val usableAddress = address?.trim()?.takeIf { it.isNotEmpty() && it != "00:00:00:00:00:00" && it != "02:00:00:00:00:00" }
+    return "bt:" + (usableAddress ?: deviceName?.trim()?.takeIf { it.isNotEmpty() } ?: "unknown")
 }

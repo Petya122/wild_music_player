@@ -40,3 +40,9 @@ val LocalArtworkColors = staticCompositionLocalOf<ArtworkColors?> { null }
 
 /** File details for the Song info sheet; null hides "Song info" in song menus. Provided by each app. */
 val LocalSongInfo = staticCompositionLocalOf<com.wildmusicplayer.platform.SongInfoSource?> { null }
+
+/** Lets the user pick a text file (a .lrc) and hands over its text; null hides "Use my own .lrc file". */
+val LocalPickTextFile = staticCompositionLocalOf<((onPicked: (String) -> Unit) -> Unit)?> { null }
+
+/** Opens the editor for a song's title, artist, album and cover; null hides "Edit details". Provided by each app. */
+val LocalEditSong = staticCompositionLocalOf<((Song) -> Unit)?> { null }

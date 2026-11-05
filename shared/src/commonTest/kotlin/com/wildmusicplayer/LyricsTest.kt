@@ -4,6 +4,7 @@ import com.wildmusicplayer.lyrics.HttpResult
 import com.wildmusicplayer.lyrics.LyricLine
 import com.wildmusicplayer.lyrics.LyricsRepository
 import com.wildmusicplayer.lyrics.LyricsResult
+import com.wildmusicplayer.lyrics.LyricsSource
 import com.wildmusicplayer.lyrics.currentLineIndex
 import com.wildmusicplayer.lyrics.parseLrc
 import com.wildmusicplayer.model.Song
@@ -113,6 +114,43 @@ class LyricsTest {
             )
         }
         assertEquals(LyricsResult.Synced(listOf(LyricLine(4_000, "Same length"))), repo.lyricsFor(song))
+    }
+
+    @Test
+    fun ownLyricsFileWinsAndStaysUntilRemoved() = runTest {
+        val storage = FakeFileStore()
+        val repo = repository(storage) {
+            HttpResult(200, """{"duration":319,"plainLyrics":"Online","syncedLyrics":"[00:01.00]Online"}""")
+        }
+        repo.saveOwnLyrics(song, "[00:02.00]Mine")
+        assertEquals(
+            LyricsResult.Synced(listOf(LyricLine(2_000, "Mine")), source = LyricsSource.OWN_FILE),
+            repo.lyricsFor(song)
+        )
+        // Timing fixes work on it too
+        repo.setTimingOffset(song, 500)
+        assertEquals(500L, (repo.lyricsFor(song) as LyricsResult.Synced).offsetMs)
+        // A plain text file is shown as plain lyrics
+        repo.saveOwnLyrics(song, "Just words\nNo times")
+        assertEquals(LyricsResult.Plain("Just words\nNo times", LyricsSource.OWN_FILE), repo.lyricsFor(song))
+
+        repo.removeOwnLyrics(song)
+        assertEquals(LyricsResult.Synced(listOf(LyricLine(1_000, "Online"))), repo.lyricsFor(song))
+    }
+
+    @Test
+    fun lyricsFolderFileWinsOverOnlineAndKeepsTheTimingFix() = runTest {
+        val storage = FakeFileStore()
+        val repo = LyricsRepository(
+            storage, { error("no lookup when the folder has the song") }, { false }, { 1_000L },
+            localFiles = { "[00:03.00]From the folder" }
+        )
+        assertEquals(
+            LyricsResult.Synced(listOf(LyricLine(3_000, "From the folder")), source = LyricsSource.FOLDER),
+            repo.lyricsFor(song)
+        )
+        repo.setTimingOffset(song, -1_000)
+        assertEquals(-1_000L, (repo.lyricsFor(song) as LyricsResult.Synced).offsetMs)
     }
 
     @Test

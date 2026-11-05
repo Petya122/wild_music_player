@@ -44,6 +44,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-pressing the app icon: Shuffle all, Favorites (and the last playlist, added by the app) -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
             <!-- Long-pressing the Quick Settings tile opens the app -->
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
@@ -73,7 +77,8 @@
         <!-- Home-screen player widget -->
         <receiver
             android:name=".widget.PlayerWidget"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/player_widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -81,6 +86,28 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/wmp_widget_info" />
         </receiver>
+
+        <!-- Playlist widget: one tap plays the playlist picked when it was placed -->
+        <receiver
+            android:name=".widget.PlaylistWidget"
+            android:exported="false"
+            android:label="@string/playlist_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/playlist_widget_info" />
+        </receiver>
+        <activity
+            android:name=".widget.PlaylistWidgetConfigActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.WildMusicPlayer">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <!-- Quick Settings tile: play / pause, shows the song -->
         <service

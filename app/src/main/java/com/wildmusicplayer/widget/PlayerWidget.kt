@@ -1,5 +1,7 @@
 package com.wildmusicplayer.widget
 
+import com.wildmusicplayer.data.PlaylistRepository
+import android.view.View
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -51,6 +53,15 @@ class PlayerWidget : AppWidgetProvider() {
         when (intent.action) {
             ACTION_NEXT -> PlaybackService.skip(next = true)
             ACTION_PREVIOUS -> PlaybackService.skip(next = false)
+            ACTION_SHUFFLE -> PlaybackService.toggleShuffle()
+            // Works with the app closed too: favorites are saved right away
+            ACTION_FAVORITE -> {
+                val songId = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_SONG_ID, -1L)
+                if (songId > 0) {
+                    PlaylistRepository.getInstance(context).toggleFavorite(songId)
+                    renderAll(context)
+                }
+            }
             else -> super.onReceive(context, intent)
         }
     }
@@ -62,6 +73,12 @@ class PlayerWidget : AppWidgetProvider() {
     companion object {
         private const val ACTION_NEXT = "com.wildmusicplayer.widget.NEXT"
         private const val ACTION_PREVIOUS = "com.wildmusicplayer.widget.PREVIOUS"
+        private const val ACTION_SHUFFLE = "com.wildmusicplayer.widget.SHUFFLE"
+        private const val ACTION_FAVORITE = "com.wildmusicplayer.widget.FAVORITE"
+        private const val KEY_SONG_ID = "song_id"
+        private const val KEY_SHUFFLE = "shuffle"
+        private const val KEY_POSITION = "position"
+        private const val KEY_DURATION = "duration"
         private const val PREFS_NAME = "player_widget"
         private const val KEY_TITLE = "title"
         private const val KEY_ARTIST = "artist"
@@ -69,7 +86,7 @@ class PlayerWidget : AppWidgetProvider() {
         private const val KEY_PLAYING = "playing"
         private const val COVER_SIZE_PX = 256
         // Heights (dp) from which the big layout fits
-        private const val LARGE_MIN_HEIGHT_DP = 110f
+        private const val LARGE_MIN_HEIGHT_DP = 130f
 
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -77,13 +94,30 @@ class PlayerWidget : AppWidgetProvider() {
         @Volatile private var coverUri: String? = null
         @Volatile private var coverBitmap: Bitmap? = null
 
-        /** Called by PlaybackService when the song or play state changes; null [title] = nothing loaded. */
-        fun update(context: Context, title: String?, artist: String?, artworkUri: String?, isPlaying: Boolean) {
+        /**
+         * Called by PlaybackService when the song, play state, shuffle or position changes; null [title] =
+         * nothing loaded. [songId] is null for online streams (no heart then).
+         */
+        fun update(
+            context: Context,
+            title: String?,
+            artist: String?,
+            artworkUri: String?,
+            isPlaying: Boolean,
+            songId: Long? = null,
+            shuffle: Boolean = false,
+            positionMs: Long = 0L,
+            durationMs: Long = 0L
+        ) {
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
                 .putString(KEY_TITLE, title)
                 .putString(KEY_ARTIST, artist)
                 .putString(KEY_ARTWORK, artworkUri)
                 .putBoolean(KEY_PLAYING, isPlaying)
+                .putLong(KEY_SONG_ID, songId ?: -1L)
+                .putBoolean(KEY_SHUFFLE, shuffle)
+                .putLong(KEY_POSITION, positionMs)
+                .putLong(KEY_DURATION, durationMs)
                 .apply()
             renderAll(context)
             PlayerTileService.refresh(context)
@@ -106,6 +140,10 @@ class PlayerWidget : AppWidgetProvider() {
             PlayerTileService.refresh(context)
         }
 
+        /** True when at least one player widget is on the home screen (no need to update otherwise). */
+        fun hasWidgets(context: Context): Boolean =
+            AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, PlayerWidget::class.java)).isNotEmpty()
+
         /** Draws every placed widget again, e.g. after the accent color changed. */
         fun renderAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
@@ -115,11 +153,17 @@ class PlayerWidget : AppWidgetProvider() {
 
         private fun render(context: Context, manager: AppWidgetManager, ids: IntArray) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val songId = prefs.getLong(KEY_SONG_ID, -1L)
             val state = WidgetState(
                 title = prefs.getString(KEY_TITLE, null),
                 artist = prefs.getString(KEY_ARTIST, null),
                 artworkUri = prefs.getString(KEY_ARTWORK, null),
-                isPlaying = prefs.getBoolean(KEY_PLAYING, false)
+                isPlaying = prefs.getBoolean(KEY_PLAYING, false),
+                isFavorite = songId > 0 && songId in PlaylistRepository.getInstance(context).favoriteSongIds.value,
+                canFavorite = songId > 0,
+                shuffle = prefs.getBoolean(KEY_SHUFFLE, false),
+                positionMs = prefs.getLong(KEY_POSITION, 0L),
+                durationMs = prefs.getLong(KEY_DURATION, 0L)
             )
             val cover = coverBitmap.takeIf { coverUri == state.artworkUri }
             for (id in ids) {
@@ -152,8 +196,8 @@ class PlayerWidget : AppWidgetProvider() {
         }
 
         private fun views(context: Context, manager: AppWidgetManager, id: Int, state: WidgetState, cover: Bitmap?): RemoteViews {
-            val small = layout(context, R.layout.widget_player_small, state, cover)
-            val large = layout(context, R.layout.widget_player_large, state, cover)
+            val small = layout(context, R.layout.widget_player_small, state, cover, large = false)
+            val large = layout(context, R.layout.widget_player_large, state, cover, large = true)
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 RemoteViews(mapOf(SizeF(180f, 48f) to small, SizeF(180f, LARGE_MIN_HEIGHT_DP) to large))
             } else {
@@ -162,8 +206,31 @@ class PlayerWidget : AppWidgetProvider() {
             }
         }
 
-        private fun layout(context: Context, layoutId: Int, state: WidgetState, cover: Bitmap?): RemoteViews =
+        private fun layout(context: Context, layoutId: Int, state: WidgetState, cover: Bitmap?, large: Boolean): RemoteViews =
             RemoteViews(context.packageName, layoutId).apply {
+                val accent = ColorStateList.valueOf(accentColor(context))
+                // How far into the song: a thin line, hidden when nothing is loaded
+                if (state.title != null && state.durationMs > 0) {
+                    setViewVisibility(R.id.widget_progress, View.VISIBLE)
+                    setProgressBar(R.id.widget_progress, 1000, (state.positionMs * 1000 / state.durationMs).toInt().coerceIn(0, 1000), false)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        setColorStateList(R.id.widget_progress, "setProgressTintList", accent)
+                    }
+                } else {
+                    setViewVisibility(R.id.widget_progress, View.INVISIBLE)
+                }
+                if (large) {
+                    setImageViewResource(R.id.widget_favorite, if (state.isFavorite) R.drawable.ic_widget_heart_filled else R.drawable.ic_widget_heart)
+                    setViewVisibility(R.id.widget_favorite, if (state.canFavorite) View.VISIBLE else View.INVISIBLE)
+                    // Shuffle off: dimmed. On (and a liked song's heart): the accent color, from Android 12
+                    setInt(R.id.widget_shuffle, "setImageAlpha", if (state.shuffle) 255 else 110)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (state.shuffle) setColorStateList(R.id.widget_shuffle, "setImageTintList", accent)
+                        if (state.isFavorite) setColorStateList(R.id.widget_favorite, "setImageTintList", accent)
+                    }
+                    setOnClickPendingIntent(R.id.widget_shuffle, widgetAction(context, ACTION_SHUFFLE))
+                    setOnClickPendingIntent(R.id.widget_favorite, widgetAction(context, ACTION_FAVORITE))
+                }
                 setTextViewText(R.id.widget_title, state.title ?: context.getString(R.string.widget_nothing_playing))
                 setTextViewText(R.id.widget_artist, state.artist.orEmpty())
                 if (cover != null) {
@@ -222,5 +289,15 @@ class PlayerWidget : AppWidgetProvider() {
 
     data class NowPlaying(val title: String?, val artist: String?, val isPlaying: Boolean)
 
-    private data class WidgetState(val title: String?, val artist: String?, val artworkUri: String?, val isPlaying: Boolean)
+    private data class WidgetState(
+        val title: String?,
+        val artist: String?,
+        val artworkUri: String?,
+        val isPlaying: Boolean,
+        val isFavorite: Boolean = false,
+        val canFavorite: Boolean = false,
+        val shuffle: Boolean = false,
+        val positionMs: Long = 0L,
+        val durationMs: Long = 0L
+    )
 }

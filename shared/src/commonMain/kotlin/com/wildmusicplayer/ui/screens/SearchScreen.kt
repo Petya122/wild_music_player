@@ -1,5 +1,17 @@
 package com.wildmusicplayer.ui.screens
 
+import com.wildmusicplayer.ui.components.SongThumbnail
+import com.wildmusicplayer.ui.PlatformBackHandler
+import com.wildmusicplayer.data.artistsOf
+import com.wildmusicplayer.data.albumsOf
+import com.wildmusicplayer.data.SongGroup
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,10 +65,41 @@ fun SearchScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onDeleteSong: ((Song) -> Unit)? = null,
-    onAddToPlaylist: ((Song) -> Unit)? = null
+    onAddToPlaylist: ((Song) -> Unit)? = null,
+    // Plays a whole artist or album found by the search
+    onPlayGroup: (List<Song>, shuffle: Boolean) -> Unit = { list, _ -> list.firstOrNull()?.let { onSongClick(it, list) } }
 ) {
     var query by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf(SearchFilter.ALL) }
+    var openGroup by remember { mutableStateOf<SongGroup?>(null) }
+
+    // Artists and albums whose name matches, shown above the songs
+    val matchingArtists = remember(songs, query, activeFilter) {
+        if (query.isBlank() || activeFilter !in setOf(SearchFilter.ALL, SearchFilter.ARTIST)) emptyList()
+        else artistsOf(songs).filter { it.title.contains(query.trim(), ignoreCase = true) }
+    }
+    val matchingAlbums = remember(songs, query, activeFilter) {
+        if (query.isBlank() || activeFilter !in setOf(SearchFilter.ALL, SearchFilter.ALBUM)) emptyList()
+        else albumsOf(songs).filter { it.title.contains(query.trim(), ignoreCase = true) }
+    }
+
+    // Back from an artist or album returns to the results
+    PlatformBackHandler(enabled = openGroup != null) { openGroup = null }
+    openGroup?.let { group ->
+        SongGroupDetail(
+            group = group,
+            favoriteSongIds = favoriteSongIds,
+            currentPlayingSongId = currentPlayingSongId,
+            bottomPadding = bottomPadding,
+            onBack = { openGroup = null },
+            onSongClick = { song -> onSongClick(song, group.songs) },
+            onPlay = { shuffle -> onPlayGroup(group.songs, shuffle) },
+            onToggleFavorite = onToggleFavorite,
+            onDeleteSong = onDeleteSong,
+            onAddToPlaylist = onAddToPlaylist
+        )
+        return
+    }
 
     val filteredSongs = remember(songs, query, activeFilter) {
         if (query.isBlank()) {
@@ -168,7 +211,7 @@ fun SearchScreen(
                     )
                 }
             }
-        } else if (filteredSongs.isEmpty()) {
+        } else if (filteredSongs.isEmpty() && matchingArtists.isEmpty() && matchingAlbums.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -186,7 +229,17 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = bottomPadding)
             ) {
-                item {
+                if (matchingArtists.isNotEmpty()) {
+                    item(key = "artists") {
+                        GroupRow("Artists", matchingArtists, round = true) { openGroup = it }
+                    }
+                }
+                if (matchingAlbums.isNotEmpty()) {
+                    item(key = "albums") {
+                        GroupRow("Albums", matchingAlbums, round = false) { openGroup = it }
+                    }
+                }
+                if (filteredSongs.isNotEmpty()) item(key = "songs-header") {
                     Text(
                         text = "Found ${filteredSongs.size} matching ${if (filteredSongs.size == 1) "track" else "tracks"}",
                         style = MaterialTheme.typography.labelMedium,
@@ -207,6 +260,57 @@ fun SearchScreen(
                         onToggleFavorite = { onToggleFavorite(song.id) },
                         onDelete = onDeleteSong?.let { delete -> { delete(song) } },
                         onAddToPlaylist = onAddToPlaylist?.let { add -> { add(song) } }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A titled, sideways-scrolling row of artists (round pictures) or albums (covers). */
+@Composable
+private fun GroupRow(title: String, groups: List<SongGroup>, round: Boolean, onOpen: (SongGroup) -> Unit) {
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(
+            text = "$title (${groups.size})",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(groups, key = { it.key }) { group ->
+                Column(
+                    modifier = Modifier
+                        .width(112.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpen(group) }
+                        .padding(6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    SongThumbnail(
+                        albumArtUri = group.artUri,
+                        modifier = Modifier.size(100.dp),
+                        shape = if (round) CircleShape else RoundedCornerShape(10.dp)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = group.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = if (round) "${group.songs.size} ${if (group.songs.size == 1) "song" else "songs"}" else group.subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
                     )
                 }
             }

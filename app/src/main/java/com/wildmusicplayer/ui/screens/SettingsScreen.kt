@@ -67,6 +67,7 @@ fun SettingsScreen(
         CarSection()
         LibrarySection(filterShortAudio, onFilterShortAudioToggled, filterRecordings, onFilterRecordingsToggled)
         SoundSection()
+        LyricsSection()
         BackupSection(librarySongs)
         UpdateAndStorageSections(onShowWhatsNew)
         DownloadsSection(isOfflineOnlyMode, onOfflineOnlyModeToggled)

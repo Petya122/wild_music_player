@@ -1,5 +1,10 @@
 package com.wildmusicplayer.service
 
+import kotlinx.coroutines.withContext
+import com.wildmusicplayer.data.AudioRepository
+import com.wildmusicplayer.data.AppSettings
+import com.wildmusicplayer.data.PlayTarget
+import com.google.common.util.concurrent.SettableFuture
 import com.wildmusicplayer.data.forContext
 import com.wildmusicplayer.data.getInstance
 import android.app.PendingIntent
@@ -79,6 +84,17 @@ class PlaybackService : MediaSessionService() {
 
     private var crossfade: CrossfadeController? = null
 
+    // The real player, under the car's repeat handling (the notification's buttons are the app's own)
+    private lateinit var exoPlayer: ExoPlayer
+
+    // While playing, the widget's progress line moves on every few seconds
+    private val widgetProgress = object : Runnable {
+        override fun run() {
+            updateWidget()
+            mainHandler.postDelayed(this, WIDGET_PROGRESS_MS)
+        }
+    }
+
     private val periodicSave = object : Runnable {
         override fun run() {
             saveQueue()
@@ -91,7 +107,7 @@ class PlaybackService : MediaSessionService() {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             saveQueue()
             applyTrackLoudness(mediaItem)
-            updateFavoriteButton()
+            updateNotificationButtons()
             updateWidget()
             playCountCandidate = currentSongId()
         }
@@ -107,15 +123,31 @@ class PlaybackService : MediaSessionService() {
             }
         }
 
-        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = saveQueue()
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            saveQueue()
+            updateNotificationButtons()
+            updateWidget()
+        }
 
-        override fun onRepeatModeChanged(repeatMode: Int) = saveQueue()
+        // A seek moves the widget's progress line at once
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) updateWidget()
+        }
+
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            saveQueue()
+            updateNotificationButtons()
+        }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             saveQueue()
             updateWidget()
             mainHandler.removeCallbacks(periodicSave)
-            if (isPlaying) mainHandler.postDelayed(periodicSave, SAVE_INTERVAL_MS)
+            mainHandler.removeCallbacks(widgetProgress)
+            if (isPlaying) {
+                mainHandler.postDelayed(periodicSave, SAVE_INTERVAL_MS)
+                if (PlayerWidget.hasWidgets(this@PlaybackService)) mainHandler.postDelayed(widgetProgress, WIDGET_PROGRESS_MS)
+            }
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -191,6 +223,7 @@ class PlaybackService : MediaSessionService() {
         )
 
         val audioEffectsManager = com.wildmusicplayer.data.AudioEffectsManager.getInstance(this)
+        exoPlayer = player
         audioEffectsManager.attachPlayer(player)
         SleepTimerManager.attach(player, audioEffectsManager)
         crossfade = CrossfadeController(this, player, audioEffectsManager)
@@ -208,7 +241,12 @@ class PlaybackService : MediaSessionService() {
 
         // The notification's heart follows favorites changed anywhere, in the app too
         playlists = PlaylistRepository.getInstance(this)
-        serviceScope.launch { playlists.favoriteSongIds.collect { updateFavoriteButton() } }
+        serviceScope.launch {
+            playlists.favoriteSongIds.collect {
+                updateNotificationButtons()
+                updateWidget()
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -303,7 +341,11 @@ class PlaybackService : MediaSessionService() {
             title = metadata?.title?.toString(),
             artist = metadata?.artist?.toString(),
             artworkUri = metadata?.artworkUri?.toString(),
-            isPlaying = player.isPlaying
+            isPlaying = player.isPlaying,
+            songId = currentSongId(),
+            shuffle = player.shuffleModeEnabled,
+            positionMs = player.currentPosition.coerceAtLeast(0),
+            durationMs = player.duration.takeIf { it > 0 } ?: 0L
         )
     }
 
@@ -311,24 +353,84 @@ class PlaybackService : MediaSessionService() {
     private fun currentSongId(): Long? =
         mediaSession?.player?.currentMediaItem?.mediaId?.toLongOrNull()?.takeIf { it > 0 }
 
-    /** A ♡ button in the notification and lock screen player, filled when the song is a favorite. */
-    private fun updateFavoriteButton() {
+    /**
+     * Extra buttons in the notification and lock screen player, next to previous / play / next: shuffle,
+     * repeat (off → all → one, like the app's own button) and a ♡, filled when the song is a favorite.
+     * Android fits two next to Next, so the ♡ shows only when there's room (the user's choice in 0.9.5).
+     */
+    private fun updateNotificationButtons() {
         val session = mediaSession ?: return
-        val songId = currentSongId()
-        val buttons = if (songId == null) {
-            emptyList()
-        } else {
+        if (!::exoPlayer.isInitialized) return
+        val buttons = mutableListOf<CommandButton>()
+        if (exoPlayer.mediaItemCount > 0) {
+            val shuffle = exoPlayer.shuffleModeEnabled
+            buttons += extraButton(
+                if (shuffle) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF,
+                if (shuffle) "Shuffle on" else "Shuffle off",
+                SHUFFLE_COMMAND
+            )
+            buttons += extraButton(
+                when (exoPlayer.repeatMode) {
+                    Player.REPEAT_MODE_ONE -> CommandButton.ICON_REPEAT_ONE
+                    Player.REPEAT_MODE_ALL -> CommandButton.ICON_REPEAT_ALL
+                    else -> CommandButton.ICON_REPEAT_OFF
+                },
+                when (exoPlayer.repeatMode) {
+                    Player.REPEAT_MODE_ONE -> "Repeat this song"
+                    Player.REPEAT_MODE_ALL -> "Repeat all"
+                    else -> "Repeat off"
+                },
+                REPEAT_COMMAND
+            )
+        }
+        // Third: shown only where there's room (at the end of the queue, without Next)
+        currentSongId()?.let { songId ->
             val isFavorite = songId in playlists.favoriteSongIds.value
-            listOf(
-                CommandButton.Builder(if (isFavorite) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED)
-                    .setDisplayName(if (isFavorite) "Remove from favorites" else "Add to favorites")
-                    .setSessionCommand(FAVORITE_COMMAND)
-                    // An extra button, not instead of Next (the default slot would replace it)
-                    .setSlots(CommandButton.SLOT_OVERFLOW)
-                    .build()
+            buttons += extraButton(
+                if (isFavorite) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED,
+                if (isFavorite) "Remove from favorites" else "Add to favorites",
+                FAVORITE_COMMAND
             )
         }
         session.setMediaButtonPreferences(buttons)
+    }
+
+    // Extra buttons, not instead of Next (the default slot would replace it)
+    @OptIn(UnstableApi::class)
+    private fun extraButton(icon: Int, name: String, command: SessionCommand) =
+        CommandButton.Builder(icon)
+            .setDisplayName(name)
+            .setSessionCommand(command)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .build()
+
+    /**
+     * The playlist widget's tap: finds the songs of [EXTRA_PLAY_TARGET] (a [PlayTarget] key) and plays them,
+     * shuffled when [EXTRA_SHUFFLE]. Answers RESULT_ERROR_BAD_VALUE when there's nothing to play.
+     */
+    private fun playTarget(args: Bundle): ListenableFuture<SessionResult> {
+        val target = PlayTarget.fromKey(args.getString(EXTRA_PLAY_TARGET))
+            ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+        val shuffle = args.getBoolean(EXTRA_SHUFFLE)
+        val result = SettableFuture.create<SessionResult>()
+        serviceScope.launch {
+            val settings = AppSettings.getInstance(this@PlaybackService)
+            val library = withContext(Dispatchers.IO) {
+                AudioRepository(this@PlaybackService).getLocalSongs(settings.filterShortAudio.value, settings.filterRecordings.value)
+            }
+            val songs = target.songs(library, playlists.favoriteSongIds.value, playlists.playCounts.value, playlists.customPlaylists.value)
+            if (songs.isEmpty()) {
+                result.set(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+                return@launch
+            }
+            // Shuffled like the app's own Shuffle buttons; "in order" really plays in order
+            if (!shuffle) exoPlayer.shuffleModeEnabled = false
+            exoPlayer.setMediaItems((if (shuffle) songs.shuffled() else songs).map { it.toMediaItem() }, 0, 0L)
+            exoPlayer.prepare()
+            exoPlayer.play()
+            result.set(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+        return result
     }
 
     // Empty queues aren't saved: "Stop" clears the saved queue on purpose (MusicControllerManager)
@@ -346,6 +448,10 @@ class PlaybackService : MediaSessionService() {
         ): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                 .add(FAVORITE_COMMAND)
+                .add(SHUFFLE_COMMAND)
+                .add(REPEAT_COMMAND)
+                // "Play this playlist" is only for the app's own widget
+                .apply { if (controller.packageName == packageName) add(PLAY_TARGET_COMMAND) }
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
@@ -358,11 +464,20 @@ class PlaybackService : MediaSessionService() {
             customCommand: SessionCommand,
             args: Bundle
         ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction == ACTION_TOGGLE_FAVORITE) {
+            when (customCommand.customAction) {
                 // The favorites flow then updates the button
-                currentSongId()?.let { playlists.toggleFavorite(it) }
-                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                ACTION_TOGGLE_FAVORITE -> currentSongId()?.let { playlists.toggleFavorite(it) }
+                ACTION_TOGGLE_SHUFFLE -> exoPlayer.shuffleModeEnabled = !exoPlayer.shuffleModeEnabled
+                // Straight to the player: these are the app's own buttons, not the car's RPT
+                ACTION_CYCLE_REPEAT -> exoPlayer.repeatMode = when (exoPlayer.repeatMode) {
+                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                    else -> Player.REPEAT_MODE_OFF
+                }
+                ACTION_PLAY_TARGET -> return playTarget(args)
+                else -> return super.onCustomCommand(session, controller, customCommand, args)
             }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             return super.onCustomCommand(session, controller, customCommand, args)
         }
 
@@ -398,6 +513,12 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+        /** Custom command for the playlist widget: play a [PlayTarget] ([EXTRA_PLAY_TARGET], [EXTRA_SHUFFLE]). */
+        const val ACTION_PLAY_TARGET = "com.wildmusicplayer.PLAY_TARGET"
+        const val EXTRA_PLAY_TARGET = "target"
+        const val EXTRA_SHUFFLE = "shuffle"
+        private val PLAY_TARGET_COMMAND = SessionCommand(ACTION_PLAY_TARGET, Bundle.EMPTY)
+
         // The running service, for the widget's previous / next buttons (same process, main thread)
         @Volatile private var running: PlaybackService? = null
 
@@ -412,6 +533,13 @@ class PlaybackService : MediaSessionService() {
             return true
         }
 
+        /** Shuffle on / off for the widget; nothing when the player isn't running. */
+        fun toggleShuffle() {
+            val service = running ?: return
+            if (!service::exoPlayer.isInitialized) return
+            service.exoPlayer.shuffleModeEnabled = !service.exoPlayer.shuffleModeEnabled
+        }
+
         /** Skips in the playing queue; does nothing when the player isn't running (nothing to skip). */
         fun skip(next: Boolean) {
             val player = running?.mediaSession?.player ?: return
@@ -419,6 +547,7 @@ class PlaybackService : MediaSessionService() {
         }
 
         private const val SAVE_INTERVAL_MS = 10_000L
+        private const val WIDGET_PROGRESS_MS = 5_000L
         private const val PLAY_COUNT_AFTER_MS = 30_000L
         private const val RECONNECT_WINDOW_MS = 2 * 60 * 60 * 1000L
         private const val RECONNECT_PLAY_DELAY_MS = 1_500L
@@ -429,7 +558,11 @@ class PlaybackService : MediaSessionService() {
         private const val CAR_NUDGE_MIN_LEFT_MS = 5_000L
 
         private const val ACTION_TOGGLE_FAVORITE = "com.wildmusicplayer.TOGGLE_FAVORITE"
+        private const val ACTION_TOGGLE_SHUFFLE = "com.wildmusicplayer.TOGGLE_SHUFFLE"
+        private const val ACTION_CYCLE_REPEAT = "com.wildmusicplayer.CYCLE_REPEAT"
         private val FAVORITE_COMMAND = SessionCommand(ACTION_TOGGLE_FAVORITE, Bundle.EMPTY)
+        private val SHUFFLE_COMMAND = SessionCommand(ACTION_TOGGLE_SHUFFLE, Bundle.EMPTY)
+        private val REPEAT_COMMAND = SessionCommand(ACTION_CYCLE_REPEAT, Bundle.EMPTY)
     }
 }
 

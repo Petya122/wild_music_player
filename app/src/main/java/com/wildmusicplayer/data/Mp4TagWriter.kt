@@ -99,12 +99,14 @@ object Mp4TagWriter {
         var udtaWritten = false
         for (child in children) {
             if (child.type == "udta") {
-                // Keep other user data, replace any existing tags
+                // Keep other user data and the tags not being set (track number, year, genre…, and the
+                // cover when no new one is given); replace title, artist and album
+                val udtaBoxes = parseBoxes(moovBytes, child.contentStart.toInt(), child.end.toInt())
+                val kept = udtaBoxes.firstOrNull { it.type == "meta" }?.let { keptItems(moovBytes, it, tags) } ?: ByteArray(0)
                 val udtaContent = ByteArrayOutputStream()
-                parseBoxes(moovBytes, child.contentStart.toInt(), child.end.toInt())
-                    .filter { it.type != "meta" }
+                udtaBoxes.filter { it.type != "meta" }
                     .forEach { udtaContent.write(moovBytes, it.offset.toInt(), it.size.toInt()) }
-                udtaContent.write(metaBox(tags))
+                udtaContent.write(metaBox(tags, kept))
                 content.write(box("udta", udtaContent.toByteArray()))
                 udtaWritten = true
             } else {
@@ -117,7 +119,21 @@ object Mp4TagWriter {
         return box("moov", content.toByteArray())
     }
 
-    private fun metaBox(tags: Tags): ByteArray {
+    /** The existing ilst items that [tags] doesn't replace, as raw bytes. */
+    private fun keptItems(bytes: ByteArray, meta: Box, tags: Tags): ByteArray {
+        // meta is a "full box": 4 bytes of version/flags before its children
+        val ilst = parseBoxes(bytes, meta.contentStart.toInt() + 4, meta.end.toInt()).firstOrNull { it.type == "ilst" }
+            ?: return ByteArray(0)
+        val replaced = mutableSetOf("©nam", "©ART", "©alb")
+        if (tags.coverJpeg != null) replaced += "covr"
+        val out = ByteArrayOutputStream()
+        parseBoxes(bytes, ilst.contentStart.toInt(), ilst.end.toInt())
+            .filter { it.type !in replaced }
+            .forEach { out.write(bytes, it.offset.toInt(), it.size.toInt()) }
+        return out.toByteArray()
+    }
+
+    private fun metaBox(tags: Tags, keptItems: ByteArray = ByteArray(0)): ByteArray {
         val hdlr = box(
             "hdlr",
             ByteArray(8) + "mdir".toByteArray(Charsets.ISO_8859_1) +
@@ -128,6 +144,7 @@ object Mp4TagWriter {
             write(textItem("©ART", tags.artist))
             write(textItem("©alb", tags.album))
             tags.coverJpeg?.let { write(dataItem("covr", DATA_TYPE_JPEG, it)) }
+            write(keptItems)
         }
         // meta is a "full box": 4 bytes of version/flags before its children
         return box("meta", ByteArray(4) + hdlr + box("ilst", ilst.toByteArray()))

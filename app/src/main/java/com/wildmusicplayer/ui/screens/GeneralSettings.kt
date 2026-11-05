@@ -1,5 +1,11 @@
 package com.wildmusicplayer.ui.screens
 
+import com.wildmusicplayer.data.LyricsFolder
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.Lyrics
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import com.wildmusicplayer.ui.theme.AccentColor
 import androidx.compose.ui.graphics.SolidColor
@@ -207,6 +213,17 @@ internal fun CarSection() {
                 resumeSettings.resumeOnBluetoothReconnect = enabled
             }
         )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        val audioEffects = remember { AudioEffectsManager.getInstance(appContext) }
+        val perDeviceSound by audioEffects.perDeviceSound.collectAsState()
+        SettingsSwitchRow(
+            title = "Separate Sound for Each Bluetooth Device",
+            description = "The car, headphones and the phone each keep their own volume, dB boost, normalization, equalizer and crossfade. Switches by itself when a device connects.",
+            checked = perDeviceSound,
+            onCheckedChange = audioEffects::setPerDeviceSound
+        )
     }
 }
 
@@ -381,6 +398,48 @@ internal fun SoundSection() {
                     )
                 }
             }
+        }
+    }
+}
+
+/** Where the user keeps their own .lrc lyrics files; they're used instead of the online lyrics. */
+@Composable
+internal fun LyricsSection() {
+    val context = LocalContext.current
+    val lyricsFolder = remember { LyricsFolder.getInstance(context) }
+    val folder by lyricsFolder.folder.collectAsState()
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                lyricsFolder.setFolder(uri)
+            } catch (e: SecurityException) {
+                Toast.makeText(context, "Couldn't use that folder", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    SettingsCard(icon = Icons.Default.Lyrics, title = "Lyrics") {
+        Text(
+            text = "Your own .lrc files win over the online lyrics. Name them like the song file " +
+                "(\"Ice MC - Think About the Way.lrc\") or \"Artist - Title.lrc\"; they can be in subfolders. " +
+                "For a single song you can also load a file in the lyrics view.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Lyrics folder", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = if (folder == null) "Not chosen" else lyricsFolder.folderName() ?: "Chosen",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (folder == null) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
+                )
+            }
+            if (folder != null) {
+                TextButton(onClick = { lyricsFolder.setFolder(null) }) { Text("Remove") }
+            }
+            FilledTonalButton(onClick = { pickFolder.launch(null) }) { Text(if (folder == null) "Choose" else "Change") }
         }
     }
 }
