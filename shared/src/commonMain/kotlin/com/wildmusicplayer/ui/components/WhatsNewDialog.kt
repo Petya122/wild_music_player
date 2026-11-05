@@ -38,6 +38,14 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.0", listOf(
+            ChangelogEntry("🚗", "Song Titles in the Car", "Found the real reason the car sometimes showed \"Not Provided\": the song details Android passes to Bluetooth didn't match, so it kept waiting before telling the car anything. Fixed. The short pause after connecting from 0.8.7 is gone too."),
+            ChangelogEntry("🗑️", "Safer Playlist Deleting", "Deleting a playlist now asks first. The export button got a clearer share icon."),
+            ChangelogEntry("🕘", "Recently Played Keeps Up", "Songs reached with Next or that play automatically now show up in Recently Played too, and the row scrolls back to the newest one."),
+            ChangelogEntry("✨", "Polish", "The clock and battery icons are visible again in the light theme. Smaller fixes in the queue, the equalizer and the restore summary.")
+        )
+    ),
+    ReleaseNotes(
         "0.8.9", listOf(
             ChangelogEntry("💾", "Back Up & Restore Playlists", "Settings → Backup & Restore saves all your playlists, favorites and recently played to a file. Restore it after a reinstall or on a new phone: songs are found again by their file, or by title, artist and length. Restoring only adds, it never deletes."),
             ChangelogEntry("📤", "Export as M3U8", "The new save button on each playlist writes an .m3u8 file that other music players can open."),

@@ -25,7 +25,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material.icons.filled.PlaylistRemove
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -134,6 +134,7 @@ fun PlaylistsScreen(
     var createMode by remember { mutableIntStateOf(0) } // 0 = From Folder, 1 = Custom Name
     var newPlaylistName by remember { mutableStateOf("") }
     var overviewFilter by remember { mutableStateOf(PlaylistFilter.ALL) }
+    var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
 
     // Back from an open playlist returns to the playlist list, not to Home
     PlatformBackHandler(enabled = selectedPlaylist !is PlaylistSelection.None) {
@@ -378,13 +379,13 @@ fun PlaylistsScreen(
                                     if (onExportPlaylist != null) {
                                         IconButton(onClick = { onExportPlaylist(playlist) }) {
                                             Icon(
-                                                imageVector = Icons.Default.SaveAlt,
+                                                imageVector = Icons.Default.IosShare,
                                                 contentDescription = "Export as M3U8",
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
-                                    IconButton(onClick = { onDeletePlaylist(playlist.id) }) {
+                                    IconButton(onClick = { playlistToDelete = playlist }) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
                                             contentDescription = "Delete Playlist",
@@ -504,6 +505,24 @@ fun PlaylistsScreen(
                 }
             )
         }
+    }
+
+    // One tap on the bin shouldn't lose a playlist
+    playlistToDelete?.let { playlist ->
+        AlertDialog(
+            onDismissRequest = { playlistToDelete = null },
+            title = { Text("Delete \"${playlist.name}\"?", fontWeight = FontWeight.Bold) },
+            text = { Text("The playlist is removed from the app. The songs stay on your phone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeletePlaylist(playlist.id)
+                    playlistToDelete = null
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { playlistToDelete = null }) { Text("Cancel") } }
+        )
     }
 
     // Reworked "New Playlist" Modal Dialog

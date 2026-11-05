@@ -208,9 +208,9 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
-     * Car radios (the Qashqai, at least) only ask for the song title and repeat setting when something
-     * changes, and a song repeating on its own never changes anything, so the display can stay on
-     * "Not Provided" or lose RPT. Once the car has connected, briefly flip both so it hears them again.
+     * Car radios (the Qashqai, at least) only hear the repeat setting when it changes, so RPT can be
+     * missing after a reconnect. Once the car has connected, briefly flip it so the car hears it again.
+     * (The song title is handled by the matching queue details in toMediaItem.)
      */
     private fun refreshCarDisplay() {
         mainHandler.postDelayed({
@@ -220,11 +220,6 @@ class PlaybackService : MediaSessionService() {
             val repeatMode = player.repeatMode
             player.repeatMode = if (repeatMode == Player.REPEAT_MODE_OFF) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
             mainHandler.postDelayed({ player.repeatMode = repeatMode }, CAR_NUDGE_GAP_MS)
-
-            if (player.isPlaying) {
-                player.pause()
-                mainHandler.postDelayed({ player.play() }, CAR_NUDGE_GAP_MS)
-            }
         }, CAR_REFRESH_DELAY_MS)
     }
 

@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -46,6 +48,16 @@ class LibraryViewModel(
             val byId = songs.associateBy { it.id }
             ids.mapNotNull { byId[it] }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    init {
+        // Every song that starts goes to the front of Recently Played: tapped, skipped to, or next in line.
+        // Only real library songs (id > 0); online streams have no ID to remember.
+        viewModelScope.launch {
+            player.currentSong.map { it?.id }.distinctUntilChanged().collect { id ->
+                if (id != null && id > 0) playlists.addRecentlyPlayed(id)
+            }
+        }
+    }
 
     /** Permission granted or denied; a grant loads the library. */
     fun onPermissionResult(granted: Boolean) {
@@ -81,21 +93,18 @@ class LibraryViewModel(
     }
 
     fun playSong(song: Song, playlist: List<Song>) {
-        addRecentlyPlayed(song)
         player.playSong(song, playlist)
     }
 
     fun shuffleAll() {
         val shuffled = _songs.value.shuffled()
         if (shuffled.isEmpty()) return
-        addRecentlyPlayed(shuffled.first())
         player.playSong(shuffled.first(), shuffled)
     }
 
     fun playPlaylist(list: List<Song>, shuffle: Boolean) {
         if (list.isEmpty()) return
         val target = if (shuffle) list.shuffled() else list
-        addRecentlyPlayed(target.first())
         player.playQueue(target, 0)
     }
 
@@ -116,10 +125,5 @@ class LibraryViewModel(
 
     override fun onCleared() {
         player.release()
-    }
-
-    // Only real library songs (id > 0) go into Recently Played
-    private fun addRecentlyPlayed(song: Song) {
-        if (song.id > 0) playlists.addRecentlyPlayed(song.id)
     }
 }

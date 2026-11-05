@@ -164,6 +164,11 @@ fun Song.toMediaItem(): MediaItem {
         .setArtist(artist)                    // Line 2 on Nissan Qashqai dot-matrix LCD
         .setAlbumTitle(album)                 // Cycled via 'DISP' button on the radio
         .setDisplayTitle(title)
+        // The queue Android shows Bluetooth uses subtitle/description as artist/album. They must match the
+        // song's own details, or Bluetooth waits for them to "sync" before telling the car anything
+        // ("Not Provided" on the Qashqai)
+        .setSubtitle(artist)
+        .setDescription(album)
         .setArtworkUri(albumArtUri?.let { android.net.Uri.parse(it) })
         .setIsPlayable(true)
         .build()

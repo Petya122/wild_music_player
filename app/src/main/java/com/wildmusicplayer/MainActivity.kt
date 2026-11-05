@@ -30,6 +30,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.runtime.SideEffect
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -163,6 +167,16 @@ class MainActivity : ComponentActivity() {
                 LocalLyrics provides lyricsRepository(appContext)
             ) {
             WildMusicPlayerTheme(themeMode = currentTheme) {
+                // Status bar icons follow the app's own theme: dark icons on the light theme, even when
+                // the phone itself is in dark mode (they were white on white before)
+                val lightBars = MaterialTheme.colorScheme.background.luminance() > 0.5f
+                val view = LocalView.current
+                SideEffect {
+                    WindowCompat.getInsetsController(window, view).apply {
+                        isAppearanceLightStatusBars = lightBars
+                        isAppearanceLightNavigationBars = lightBars
+                    }
+                }
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

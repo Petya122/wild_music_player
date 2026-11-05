@@ -79,7 +79,7 @@ internal fun BackupSection(librarySongs: List<Song>) {
                 else -> buildString {
                     append("Restored ${summary.playlists} ${if (summary.playlists == 1) "playlist" else "playlists"}")
                     if (summary.songsTotal > 0) append(", ${summary.songsFound} of ${summary.songsTotal} songs found on this phone")
-                    if (summary.favorites > 0) append(", and ${summary.favorites} favorites")
+                    if (summary.favorites > 0) append(", and ${summary.favorites} ${if (summary.favorites == 1) "favorite" else "favorites"}")
                     append('.')
                     if (summary.songsFound < summary.songsTotal) {
                         append("\n\nSongs that weren't found aren't on this phone (or were renamed). Restore again after adding them.")

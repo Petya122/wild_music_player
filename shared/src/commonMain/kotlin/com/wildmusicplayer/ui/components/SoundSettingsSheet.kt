@@ -337,6 +337,8 @@ private fun EqualizerSection(equalizer: EqualizerState?, effects: AudioEffects) 
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // "Custom" first: it lights up when a slider moves, so it must always be in view
+        FilterChip(selected = equalizer.presetIndex == -1, onClick = {}, label = { Text("Custom") })
         equalizer.presets.forEachIndexed { index, name ->
             FilterChip(
                 selected = equalizer.presetIndex == index,
@@ -344,7 +346,6 @@ private fun EqualizerSection(equalizer: EqualizerState?, effects: AudioEffects) 
                 label = { Text(name) }
             )
         }
-        FilterChip(selected = equalizer.presetIndex == -1, onClick = {}, label = { Text("Custom") })
     }
 
     Spacer(modifier = Modifier.height(6.dp))

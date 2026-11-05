@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,7 +101,7 @@ fun QueueSheet(
                                     when {
                                         isDragging -> MaterialTheme.colorScheme.surfaceVariant
                                         isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                                        else -> MaterialTheme.colorScheme.surface
+                                        else -> Color.Transparent
                                     }
                                 )
                                 .clickable { onPlayItem(position) }

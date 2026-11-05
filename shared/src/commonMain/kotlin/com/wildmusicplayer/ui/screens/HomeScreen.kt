@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -165,7 +167,13 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // A song that just started moves to the front: scroll back so it's in view
+                val recentRowState = rememberLazyListState()
+                val newestId = recentlyPlayedSongs.first().id
+                LaunchedEffect(newestId) { recentRowState.animateScrollToItem(0) }
+
                 LazyRow(
+                    state = recentRowState,
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
