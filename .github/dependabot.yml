@@ -1,0 +1,21 @@
+# Dependabot: once a month, one pull request per ecosystem with the updates grouped together.
+# Workflow actions stay pinned to full commit SHAs (Dependabot updates the SHA and the "# vX" comment).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Libraries in gradle/libs.versions.toml and the Gradle plugins
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      libraries:
+        patterns: ["*"]
