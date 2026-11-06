@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/src/main/res/drawable/wmp_logo.jpg" alt="Wild Music Player logo" width="120">
+  <img src="docs/logo.svg" alt="Wild Music Player logo" width="120">
 </p>
 
 <h1 align="center">Wild Music Player</h1>
@@ -172,5 +172,4 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 [GNU General Public License](LICENSE) for more details.
 
-The app logo and icons were made with AI image tools. They're covered by the same license, as far as
-any rights in them exist.
+The app logo and icons are covered by the same license.

@@ -57,12 +57,13 @@ fun cleanChannelName(channelName: String): String =
         .trim()
 
 /**
- * YouTube Music artwork URLs carry their size ("=w120-h120-l90-rj"); ask for 1000×1000 instead.
- * Other URLs are returned unchanged.
+ * YouTube Music artwork URLs carry their size ("=w120-h120-l90-rj" or "=s120"); search results ask for
+ * 120×120, which looks blurry on the player. Ask for 1000×1000 instead. Other URLs are returned unchanged.
  */
 fun upscaleGoogleThumbnail(url: String): String =
     if (url.contains("googleusercontent.com")) {
         url.replace(Regex("""=w\d+-h\d+"""), "=w1000-h1000")
+            .replace(Regex("""=s\d+(?=[-?]|$)"""), "=s1000")
     } else {
         url
     }

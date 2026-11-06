@@ -1,6 +1,7 @@
 package com.wildmusicplayer.ui.screens
 
 import com.wildmusicplayer.data.playQueue
+import com.wildmusicplayer.data.upscaleGoogleThumbnail
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1353,7 +1354,7 @@ private fun OnlineTrackRowItem(
                 if (!track.thumbnailUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalPlatformContext.current)
-                            .data(track.thumbnailUrl)
+                            .data(upscaleGoogleThumbnail(track.thumbnailUrl))
                             .crossfade(true)
                             .build(),
                         contentDescription = "Thumbnail",

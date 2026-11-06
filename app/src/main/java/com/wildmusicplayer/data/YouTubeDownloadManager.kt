@@ -274,7 +274,7 @@ class YouTubeDownloadManager(private val context: Context) {
     private fun largestImageUrl(images: List<Image>?): String? {
         if (images.isNullOrEmpty()) return null
         val sized = images.filter { it.width > 0 }
-        return (sized.maxByOrNull { it.width } ?: images.last()).url
+        return upscaleGoogleThumbnail((sized.maxByOrNull { it.width } ?: images.last()).url)
     }
 
     suspend fun fetchTrackDetails(track: YouTubeTrack): YouTubeTrack = withContext(Dispatchers.IO) {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification and status bar icon: the Wave W in one color, Android tints it -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="64" android:viewportHeight="64">
+    <group android:translateX="-22" android:translateY="-23">
+        <path android:pathData="M34,43 L43,67 L54,48" android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M54,48 L65,67 L74,43" android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M26,51 L26,59" android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+        <path android:pathData="M82,51 L82,59" android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    </group>
+</vector>

@@ -3,6 +3,8 @@ package com.wildmusicplayer.service
 import com.wildmusicplayer.data.BrowseCatalog
 import com.google.common.collect.ImmutableList
 import androidx.media3.common.MediaMetadata
+import androidx.media3.session.DefaultMediaNotificationProvider
+import com.wildmusicplayer.R
 import androidx.media3.session.SessionError
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
@@ -250,7 +252,12 @@ class PlaybackService : MediaLibraryService() {
             .setSessionActivity(sessionActivityPendingIntent)
             .build()
 
-        audioManager = getSystemService(AudioManager::class.java)
+        // The app's own icon in the status bar instead of Media3's generic note
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notification) }
+        )
+
+        audioManager =getSystemService(AudioManager::class.java)
         audioManager?.registerAudioDeviceCallback(audioDeviceCallback, mainHandler)
 
         // The notification's heart follows favorites changed anywhere, in the app too

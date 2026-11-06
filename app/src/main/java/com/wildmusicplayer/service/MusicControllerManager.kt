@@ -1,5 +1,6 @@
 package com.wildmusicplayer.service
 
+import com.wildmusicplayer.data.upscaleGoogleThumbnail
 import com.wildmusicplayer.platform.PlayerController
 import com.wildmusicplayer.platform.QueueItem
 import androidx.media3.common.C
@@ -277,7 +278,7 @@ class MusicControllerManager(private val context: Context) : PlayerController {
             album = "YouTube Stream",
             duration = 0L,
             contentUri = streamUrl,
-            albumArtUri = artworkUrl
+            albumArtUri = artworkUrl?.let(::upscaleGoogleThumbnail)
         )
         _currentSong.value = virtualSong
         playQueue(listOf(virtualSong), 0)

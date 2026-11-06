@@ -1,5 +1,7 @@
 package com.wildmusicplayer.model
 
+import com.wildmusicplayer.data.upscaleGoogleThumbnail
+
 /**
  * Represents an audio track stored locally on the device, or an online track
  * queued for streaming (see [isOnline]). URIs are plain strings so the model works on every platform:
@@ -54,7 +56,8 @@ data class Song(
             album = "YouTube Stream",
             duration = durationSeconds * 1000L,
             contentUri = onlineUri(webUrl),
-            albumArtUri = thumbnailUrl
+            // Playlists saved before covers were upscaled still hold the small 120×120 address
+            albumArtUri = thumbnailUrl?.let(::upscaleGoogleThumbnail)
         )
 
         /** "wmp-yt://stream?url=<encoded web URL>", the same text Android's Uri.Builder produced. */

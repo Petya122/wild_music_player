@@ -173,7 +173,7 @@ class SongDownloadService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(if (waiting > 0) "Downloading song · $waiting more waiting" else "Downloading song")
             .setContentText(title)
-            .setSmallIcon(R.drawable.wmp_logo)
+            .setSmallIcon(R.drawable.ic_notification)
             .setProgress(100, progress.coerceIn(0, 100), progress <= 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

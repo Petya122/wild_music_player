@@ -3,5 +3,7 @@
     <style name="Theme.WildMusicPlayer" parent="android:Theme.Material.Light.NoActionBar">
         <!-- Status bar color. -->
         <item name="android:statusBarColor">@color/purple_700</item>
+        <!-- Android 12+ launch screen: the Wave W on its own dark circle -->
+        <item name="android:windowSplashScreenIconBackgroundColor" tools:targetApi="31">#FF13152E</item>
     </style>
 </resources>

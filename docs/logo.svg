@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="216" height="216">
+  <title>Wild Music Player</title>
+  <rect width="108" height="108" rx="26" fill="#13152E"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M34,43 L43,67 L54,48" stroke="#3FE0E8" stroke-width="7"/>
+    <path d="M54,48 L65,67 L74,43" stroke="#9B6BFF" stroke-width="7"/>
+    <path d="M26,51 L26,59" stroke="#3FE0E8" stroke-width="4.5"/>
+    <path d="M82,51 L82,59" stroke="#9B6BFF" stroke-width="4.5"/>
+  </g>
+</svg>

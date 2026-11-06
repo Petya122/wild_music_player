@@ -70,6 +70,18 @@ class TitleParsingTest {
     }
 
     @Test
+    fun streamedSongsGetSharpCovers() {
+        assertEquals("https://lh3.googleusercontent.com/abc=s1000", upscaleGoogleThumbnail("https://lh3.googleusercontent.com/abc=s120"))
+        assertEquals("https://lh3.googleusercontent.com/abc=s1000-c-k", upscaleGoogleThumbnail("https://lh3.googleusercontent.com/abc=s120-c-k"))
+        // A playlist saved with the small 120×120 cover plays with the big one
+        val song = com.wildmusicplayer.model.Song.fromOnline(
+            "Move On Baby", "Some Artist", "https://music.youtube.com/watch?v=x", 200,
+            "https://lh3.googleusercontent.com/abc=w120-h120-l90-rj"
+        )
+        assertEquals("https://lh3.googleusercontent.com/abc=w1000-h1000-l90-rj", song.albumArtUri)
+    }
+
+    @Test
     fun nonGoogleThumbnailUnchanged() {
         val url = "https://i.ytimg.com/vi/abc/hq720.jpg"
         assertEquals(url, upscaleGoogleThumbnail(url))
