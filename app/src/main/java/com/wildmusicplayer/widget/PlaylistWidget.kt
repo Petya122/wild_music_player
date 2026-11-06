@@ -43,6 +43,7 @@ class PlaylistWidget : AppWidgetProvider() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val target = PlayTarget.fromKey(prefs.getString(targetKey(widgetId), null)) ?: PlayTarget.ShuffleAll
         val shuffle = prefs.getBoolean(shuffleKey(widgetId), target == PlayTarget.ShuffleAll)
+        prefs.edit().putInt(KEY_LAST_WIDGET, widgetId).apply()
         play(context, target, shuffle)
     }
 
@@ -52,6 +53,9 @@ class PlaylistWidget : AppWidgetProvider() {
         // Keeps the "choose" PendingIntents apart from the "play" ones (which use the widget ID itself)
         private const val CHOOSE_REQUEST_BASE = 100_000
 
+        // The playlist widget set or pressed last: its playlist is what Play starts when there's nothing to resume
+        private const val KEY_LAST_WIDGET = "last_widget"
+
         private fun targetKey(widgetId: Int) = "target_$widgetId"
         private fun shuffleKey(widgetId: Int) = "shuffle_$widgetId"
 
@@ -60,8 +64,25 @@ class PlaylistWidget : AppWidgetProvider() {
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
                 .putString(targetKey(widgetId), target.key)
                 .putBoolean(shuffleKey(widgetId), shuffle)
+                .putInt(KEY_LAST_WIDGET, widgetId)
                 .apply()
             render(context, AppWidgetManager.getInstance(context), widgetId)
+        }
+
+        /**
+         * What Play starts when there's no queue to resume (the Quick Settings tile, the car's Play button):
+         * the choice on the playlist widget set or pressed last, or on any other one still on the home screen.
+         * Null without a playlist widget (then everything is shuffled).
+         */
+        fun fallbackChoice(context: Context): Pair<PlayTarget, Boolean>? {
+            val placed = AppWidgetManager.getInstance(context)
+                .getAppWidgetIds(ComponentName(context, PlaylistWidget::class.java))
+            if (placed.isEmpty()) return null
+            val last = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_LAST_WIDGET, -1)
+            val widgetId = if (last in placed) last else placed.first()
+            val target = savedChoice(context, widgetId)?.first ?: return null
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return target to prefs.getBoolean(shuffleKey(widgetId), target == PlayTarget.ShuffleAll)
         }
 
         /** The saved choice for [widgetId] (for the config screen), or null when it's new. */

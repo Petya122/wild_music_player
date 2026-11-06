@@ -1,5 +1,14 @@
 package com.wildmusicplayer.service
 
+import com.wildmusicplayer.data.BrowseCatalog
+import com.google.common.collect.ImmutableList
+import androidx.media3.common.MediaMetadata
+import androidx.media3.session.SessionError
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService
+import com.wildmusicplayer.widget.PlaylistWidget
 import androidx.core.content.ContextCompat
 import android.widget.Toast
 import android.view.KeyEvent
@@ -46,7 +55,6 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.wildmusicplayer.MainActivity
@@ -67,9 +75,9 @@ import java.util.concurrent.Executors
  * Bluetooth AVRCP metadata synchronization, audio focus handling (GPS ducking),
  * and becoming-noisy protection for car audio systems (e.g., 2017 Nissan Qashqai).
  */
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
-    private var mediaSession: MediaSession? = null
+    private var mediaSession: MediaLibrarySession? = null
     private lateinit var queueStore: QueueStore
     private lateinit var resumeSettings: ResumeSettings
     private var audioManager: AudioManager? = null
@@ -237,9 +245,9 @@ class PlaybackService : MediaSessionService() {
         player.addListener(playerListener)
 
         running = this
-        mediaSession = MediaSession.Builder(this, CarRepeatPlayer(player))
+        // A library session: cars (Android Auto, radios that browse over Bluetooth) can list the music too
+        mediaSession = MediaLibrarySession.Builder(this, CarRepeatPlayer(player), SessionCallback())
             .setSessionActivity(sessionActivityPendingIntent)
-            .setCallback(SessionCallback())
             .build()
 
         audioManager = getSystemService(AudioManager::class.java)
@@ -285,7 +293,7 @@ class PlaybackService : MediaSessionService() {
         if (exoPlayer.mediaItemCount == 0) exoPlayer.stop()
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
         return mediaSession
     }
 
@@ -462,6 +470,12 @@ class PlaybackService : MediaSessionService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
+    /** Nothing to resume: the playlist on the playlist widget (set or pressed last), else everything shuffled. */
+    private fun nothingToResume(): OutsideRequest {
+        val (target, shuffle) = PlaylistWidget.fallbackChoice(this) ?: (PlayTarget.ShuffleAll to true)
+        return OutsideRequest(target.key, shuffle)
+    }
+
     /** The saved queue to pick up again (without online songs in Offline Mode), or null when there's none. */
     private fun savedQueueToResume(): SavedQueue? {
         val offline = NetworkPolicyManager.getInstance(this).isOfflineOnlyMode
@@ -472,19 +486,18 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
-     * The songs for a press from the tile or the playlist widget: the last queue ([START_RESUME]) or a
-     * [PlayTarget]. When there's nothing (no saved queue, an empty playlist) the whole library is shuffled,
-     * so the press always plays something; it only fails with no songs at all.
+     * The songs for a press from the tile, the car or the playlist widget: the last queue ([START_RESUME])
+     * or a [PlayTarget]. No saved queue: the playlist widget's playlist ([nothingToResume]). An empty
+     * playlist: the whole library shuffled. So a press always plays something; it only fails with no songs.
      */
     private fun songsFor(request: OutsideRequest): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
         if (request.target == START_RESUME) {
-            savedQueueToResume()?.let { saved ->
-                exoPlayer.shuffleModeEnabled = saved.shuffle
-                exoPlayer.repeatMode = saved.repeatMode
-                return Futures.immediateFuture(
-                    MediaSession.MediaItemsWithStartPosition(saved.songs.map { it.toSong().toMediaItem() }, saved.index, saved.positionMs)
-                )
-            }
+            val saved = savedQueueToResume() ?: return songsFor(nothingToResume())
+            exoPlayer.shuffleModeEnabled = saved.shuffle
+            exoPlayer.repeatMode = saved.repeatMode
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(saved.songs.map { it.toSong().toMediaItem() }, saved.index, saved.positionMs)
+            )
         }
         val result = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
         serviceScope.launch {
@@ -493,7 +506,13 @@ class PlaybackService : MediaSessionService() {
                 AudioRepository(this@PlaybackService).getLocalSongs(settings.filterShortAudio.value, settings.filterRecordings.value)
             }
             val target = PlayTarget.fromKey(request.target) ?: PlayTarget.ShuffleAll
-            var songs = target.songs(library, playlists.favoriteSongIds.value, playlists.playCounts.value, playlists.customPlaylists.value)
+            val downloads = DownloadIndex.getInstance(this@PlaybackService)
+            val offline = NetworkPolicyManager.getInstance(this@PlaybackService).isOfflineOnlyMode
+            var songs = target.songs(
+                library, playlists.favoriteSongIds.value, playlists.playCounts.value, playlists.customPlaylists.value,
+                downloadedIdFor = { downloads.downloadedIdFor(it) },
+                offline = offline
+            )
             var shuffle = request.shuffle || target == PlayTarget.ShuffleAll
             if (songs.isEmpty() && library.isNotEmpty()) {
                 if (target != PlayTarget.ShuffleAll) {
@@ -523,13 +542,102 @@ class PlaybackService : MediaSessionService() {
         saveExecutor.execute { queueStore.save(snapshot) }
     }
 
-    private inner class SessionCallback : MediaSession.Callback {
+    // ---- The car's music browser (Android Auto) ----
+
+    // The library is read again at most every half minute while the car browses
+    private var libraryCache: List<Song> = emptyList()
+    private var libraryReadAt = 0L
+
+    private suspend fun libraryForBrowsing(): List<Song> {
+        val now = SystemClock.elapsedRealtime()
+        if (libraryCache.isEmpty() || now - libraryReadAt > LIBRARY_CACHE_MS) {
+            val settings = AppSettings.getInstance(this)
+            libraryCache = withContext(Dispatchers.IO) {
+                AudioRepository(this@PlaybackService).getLocalSongs(settings.filterShortAudio.value, settings.filterRecordings.value)
+            }
+            libraryReadAt = now
+        }
+        return libraryCache
+    }
+
+    private suspend fun catalog(): BrowseCatalog {
+        val downloads = DownloadIndex.getInstance(this)
+        // "Continue": what's loaded now, or the queue that would be picked up again
+        val continueTitle = if (exoPlayer.mediaItemCount > 0) {
+            exoPlayer.currentMediaItem?.mediaMetadata?.title?.toString()
+        } else {
+            savedQueueToResume()?.let { it.songs.getOrNull(it.index)?.title }
+        }
+        return BrowseCatalog(
+            library = libraryForBrowsing(),
+            favoriteIds = playlists.favoriteSongIds.value,
+            playCounts = playlists.playCounts.value,
+            playlists = playlists.customPlaylists.value,
+            recentIds = playlists.recentlyPlayedIds.value,
+            downloadedIdFor = { downloads.downloadedIdFor(it) },
+            offline = NetworkPolicyManager.getInstance(this).isOfflineOnlyMode,
+            continueTitle = continueTitle
+        )
+    }
+
+    private fun artworkFor(artUri: String?): Uri? = ArtworkProvider.uriFor(this, artUri)
+
+    /** Runs [block] off the binder thread and hands its result to Media3. */
+    private fun <T> async(block: suspend () -> T): ListenableFuture<T> {
+        val result = SettableFuture.create<T>()
+        serviceScope.launch {
+            try {
+                result.set(block())
+            } catch (e: Exception) {
+                result.setException(e)
+            }
+        }
+        return result
+    }
+
+    /**
+     * What a tap, a voice request or a search from the car plays. Rows from the browser start their whole
+     * list; "Continue" (or "play music on Wild Music") picks up what's loaded or the last queue.
+     * Null when it isn't one of those (the app's own requests carry their songs already).
+     */
+    private suspend fun carRequest(item: MediaItem): MediaSession.MediaItemsWithStartPosition? {
+        val query = item.requestMetadata.searchQuery
+        val id = item.mediaId
+        val catalog = catalog()
+        val play = when {
+            query != null -> catalog.playFromSearch(query) ?: return continueOrStart()
+            id == BrowseCatalog.CONTINUE -> return continueOrStart()
+            id.startsWith("song|") || id.startsWith("shuffle|") -> catalog.play(id)
+                ?: throw IllegalStateException("That song isn't there anymore")
+            else -> return null
+        }
+        // A Shuffle row is shuffled already, like the app's own Shuffle buttons
+        if (play.shuffled) exoPlayer.shuffleModeEnabled = false
+        return MediaSession.MediaItemsWithStartPosition(play.songs.map { it.toMediaItem() }, play.startIndex, 0L)
+    }
+
+    /** "Continue": the loaded queue where it is, else the saved one, else the widget's playlist / everything. */
+    private suspend fun continueOrStart(): MediaSession.MediaItemsWithStartPosition {
+        if (exoPlayer.mediaItemCount > 0) {
+            val items = (0 until exoPlayer.mediaItemCount).map { exoPlayer.getMediaItemAt(it) }
+            return MediaSession.MediaItemsWithStartPosition(items, exoPlayer.currentMediaItemIndex, exoPlayer.currentPosition)
+        }
+        val saved = savedQueueToResume()
+        if (saved != null) {
+            exoPlayer.shuffleModeEnabled = saved.shuffle
+            exoPlayer.repeatMode = saved.repeatMode
+            return MediaSession.MediaItemsWithStartPosition(saved.songs.map { it.toSong().toMediaItem() }, saved.index, saved.positionMs)
+        }
+        return songsFor(nothingToResume()).awaitResult()
+    }
+
+    private inner class SessionCallback : MediaLibrarySession.Callback {
         // Every controller (the notification, the lock screen, the app) may use the favorite button
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
-            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(FAVORITE_COMMAND)
                 .add(SHUFFLE_COMMAND)
                 .add(REPEAT_COMMAND)
@@ -537,6 +645,96 @@ class PlaybackService : MediaSessionService() {
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
                 .build()
+        }
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            // The car's "recent" suggestion: just the Continue row
+            val rootId = if (params?.isRecent == true) RECENT_ROOT else BrowseCatalog.ROOT
+            val root = MediaItem.Builder()
+                .setMediaId(rootId)
+                .setMediaMetadata(
+                    MediaMetadata.Builder().setTitle("Wild Music").setIsBrowsable(true).setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED).build()
+                )
+                .build()
+            return Futures.immediateFuture(LibraryResult.ofItem(root, rootParams()))
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = async {
+            val catalog = catalog()
+            val rows = if (parentId == RECENT_ROOT) {
+                catalog.item(BrowseCatalog.CONTINUE)?.let { listOf(it) }.orEmpty()
+            } else {
+                catalog.children(parentId)
+            }
+            if (rows == null) {
+                LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+            } else {
+                LibraryResult.ofItemList(rows.page(page, pageSize).map { it.toMediaItem(::artworkFor) }, params)
+            }
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String
+        ): ListenableFuture<LibraryResult<MediaItem>> = async {
+            val node = catalog().item(mediaId)
+            if (node == null) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+            else LibraryResult.ofItem(node.toMediaItem(::artworkFor), null)
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<Void>> = async {
+            session.notifySearchResultChanged(browser, query, catalog().search(query).size, params)
+            LibraryResult.ofVoid()
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = async {
+            LibraryResult.ofItemList(catalog().search(query).page(page, pageSize).map { it.toMediaItem(::artworkFor) }, params)
+        }
+
+        /**
+         * The car taps a row, asks by voice or picks a search result: it sends only an ID or a query, which
+         * become the songs to play. The app's own requests carry their songs (with addresses) and go through.
+         */
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val single = mediaItems.singleOrNull()
+            if (single == null || single.localConfiguration != null) {
+                return super.onSetMediaItems(mediaSession, controller, mediaItems, startIndex, startPositionMs)
+            }
+            return async {
+                carRequest(single)
+                    ?: super.onSetMediaItems(mediaSession, controller, mediaItems, startIndex, startPositionMs).awaitResult()
+            }
         }
 
         override fun onCustomCommand(
@@ -572,8 +770,9 @@ class PlaybackService : MediaSessionService() {
             if (!resumeSettings.resumeFromPlayButton) {
                 return Futures.immediateFailedFuture(UnsupportedOperationException("Resume is turned off"))
             }
-            val saved = savedQueueToResume()
-                ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
+            // Nothing saved (after Stop, or a fresh install): the widget's playlist or everything shuffled,
+            // rather than failing, which leaves Android waiting for the player ("isn't responding")
+            val saved = savedQueueToResume() ?: return songsFor(nothingToResume())
 
             // Straight to the player: the saved repeat mode is the user's, not a car's request
             val player = (mediaSession.player as? ForwardingPlayer)?.wrappedPlayer ?: mediaSession.player
@@ -626,6 +825,10 @@ class PlaybackService : MediaSessionService() {
         fun pause() {
             running?.mediaSession?.player?.pause()
         }
+
+        // The car's "recent" root (its suggestion card), and how long the browsed library stays fresh
+        private const val RECENT_ROOT = "recent_root"
+        private const val LIBRARY_CACHE_MS = 30_000L
 
         // The running service, for the widget's previous / next buttons (same process, main thread)
         @Volatile private var running: PlaybackService? = null

@@ -26,8 +26,8 @@ object CoverArt {
             val request = Request.Builder().url(url).build()
             val bytes = httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
-                response.body?.bytes()
-            } ?: return null
+                response.body.bytes()
+            }
             val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
             val square = cropToSquare(source)
             // Never upscale: a bigger copy of a small thumbnail isn't any sharper

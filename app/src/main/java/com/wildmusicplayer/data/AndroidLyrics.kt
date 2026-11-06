@@ -46,7 +46,7 @@ private object OkHttpGet : HttpGet {
     override suspend fun get(url: String): HttpResult? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
-            client.newCall(request).execute().use { HttpResult(it.code, it.body?.string().orEmpty()) }
+            client.newCall(request).execute().use { HttpResult(it.code, it.body.string()) }
         } catch (e: IOException) {
             null
         }

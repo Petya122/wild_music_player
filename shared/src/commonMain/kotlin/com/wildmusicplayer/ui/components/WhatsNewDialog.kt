@@ -38,6 +38,15 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.7", listOf(
+            ChangelogEntry("🚘", "Android Auto", "Wild Music on the car's screen: Home (Continue, Shuffle all, Recently Played, Favorites), Playlists, Albums and Artists, each list with a Shuffle row on top. Ask \"Hey Google, play Basic Element on Wild Music\" or search while parked. Because the app isn't from the Play Store, turn on Android Auto → Developer settings → Unknown sources once."),
+            ChangelogEntry("📱", "Queue Shows After a Closed-App Start", "Music started from the playlist widget, the tile or the car while the app was closed now shows in the app right away, with its queue. Before, the app looked empty until the next song."),
+            ChangelogEntry("▶️", "Your Widget's Playlist When There's Nothing to Continue", "After ✕ Stop (or a fresh start) the tile and the car's Play button play the playlist on your playlist widget instead of shuffling everything. A last queue is still continued first."),
+            ChangelogEntry("☁️", "Mixed Playlists Everywhere", "The widget, tile and shortcuts play a playlist's online songs too, like the app does: downloaded copies first, streams when you're online."),
+            ChangelogEntry("⬇️", "Downloads Continue Where They Stopped", "A download paused by Offline Mode picks up where it was instead of starting again. Songs you downloaded keep their ✓ in the Downloader after the app restarts.")
+        )
+    ),
+    ReleaseNotes(
         "0.9.6", listOf(
             ChangelogEntry("⚡", "Quick Settings Tile Fixed", "With the app closed or paused, the tile now really starts the music: your last queue, or everything shuffled when there's none. It lights up only once music plays. In 0.9.5 it could light up and stay silent, or end in \"Wild Music isn't responding\"."),
             ChangelogEntry("▶️", "Playlist Widget: Choose, Then Play", "Tap the playlist's name to pick another one, tap ▶ to play it. With the app fully closed the playlist now stays in the queue (before, the app could open with the old queue instead)."),

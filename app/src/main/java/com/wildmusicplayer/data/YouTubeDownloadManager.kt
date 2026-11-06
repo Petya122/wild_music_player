@@ -178,7 +178,7 @@ class YouTubeDownloadManager(private val context: Context) {
                         }
 
                         val okResponse = httpClient.newCall(builder.build()).execute()
-                        val responseBody = okResponse.body?.string()
+                        val responseBody = okResponse.body.string()
 
                         return Response(
                             okResponse.code,
@@ -292,21 +292,39 @@ class YouTubeDownloadManager(private val context: Context) {
         }
     }
 
+    /**
+     * Downloads [track] into Music/WildMusic with its tags. A download stopped by a pause
+     * ([keepPartial] true when it ends) leaves its bytes in the cache and continues from there next time,
+     * if YouTube still offers the same audio stream; otherwise it starts over.
+     */
     suspend fun downloadTrack(
         track: YouTubeTrack,
+        keepPartial: () -> Boolean = { false },
         onProgress: (Float) -> Unit
     ): Result<String> = withContext(Dispatchers.IO) {
         ensureInitialized()
         val workDir = File(context.cacheDir, "downloads").apply { mkdirs() }
-        val rawFile = File(workDir, "${System.nanoTime()}.m4a")
+        val partialName = "partial_" + sanitizeFileName(youTubeVideoId(track.webUrl) ?: youTubeVideoId(track.id) ?: track.id)
+        val rawFile = File(workDir, "$partialName.m4a")
+        val partialInfo = File(workDir, "$partialName.txt")
         var taggedFile: File? = null
+        var saved = false
         try {
             val streamInfo = StreamInfo.getInfo(normalizeUrl(track.webUrl))
             val bestAudioStream = pickBestAudioStream(streamInfo.audioStreams)
                 ?: return@withContext Result.failure(Exception("No audio streams found for this track."))
 
             val streamUrl = bestAudioStream.content
-                ?: return@withContext Result.failure(Exception("Audio stream URL is unavailable."))
+                .ifBlank { return@withContext Result.failure(Exception("Audio stream URL is unavailable.")) }
+
+            // Bytes from an earlier, paused download count only for the very same stream
+            val streamId = "${bestAudioStream.itag}"
+            val resumable = PartialDownload.parse(partialInfo.takeIf { it.exists() }?.readText())
+                ?.takeIf { it.streamId == streamId && rawFile.length() in 1 until it.totalBytes }
+            if (resumable == null) {
+                rawFile.delete()
+                partialInfo.delete()
+            }
 
             val metadata = trackMetadataFor(track)
             // Remembered with the saved file, so playlists know this exact video is on the phone
@@ -314,7 +332,11 @@ class YouTubeDownloadManager(private val context: Context) {
             val downloadIndex = DownloadIndex.getInstance(context)
 
             // 1. Download the audio into the cache (first 90% of the progress bar)
-            downloadInChunks(streamUrl, rawFile) { onProgress(it * 0.9f) }
+            downloadInChunks(
+                url = streamUrl,
+                target = rawFile,
+                onTotalKnown = { total -> partialInfo.writeText(PartialDownload(streamId, total).format()) }
+            ) { onProgress(it * 0.9f) }
 
             // 2. Write title, artist, album and cover art into the file itself, because
             //    MediaStore re-reads the file's own tags and ignores the values we insert
@@ -385,14 +407,18 @@ class YouTubeDownloadManager(private val context: Context) {
                 targetFile.absolutePath
             }
 
+            saved = true
             onProgress(1f)
             Result.success(savedPath)
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
         } finally {
-            rawFile.delete()
             taggedFile?.delete()
+            if (saved || !keepPartial()) {
+                rawFile.delete()
+                partialInfo.delete()
+            }
         }
     }
 
@@ -457,17 +483,26 @@ class YouTubeDownloadManager(private val context: Context) {
      * speed. A piece that fails is retried a few times, so a short network drop doesn't lose
      * the whole download.
      */
-    private fun downloadInChunks(url: String, target: File, onProgress: (Float) -> Unit) {
-        FileOutputStream(target).use { out ->
-            var position = 0L
+    private fun downloadInChunks(url: String, target: File, onTotalKnown: (Long) -> Unit = {}, onProgress: (Float) -> Unit) {
+        // Continues after the bytes already in [target] (a paused download), or starts it
+        FileOutputStream(target, true).use { out ->
+            var position = target.length()
             var total = -1L
             while (total < 0 || position < total) {
                 val end = position + CHUNK_SIZE - 1
                 var attempt = 0
                 while (true) {
                     try {
-                        val received = downloadChunk(url, position, end, out) { chunkTotal ->
-                            total = chunkTotal
+                        val received = try {
+                            downloadChunk(url, position, end, out) { chunkTotal ->
+                                if (total < 0) onTotalKnown(chunkTotal)
+                                total = chunkTotal
+                            }
+                        } catch (e: RangeIgnored) {
+                            // The server sends only whole files: drop what we had and take it in one go
+                            out.channel.truncate(0)
+                            position = 0
+                            downloadChunk(url, 0, end, out) { chunkTotal -> total = chunkTotal }
                         }
                         if (received < 0) {
                             // The server ignored Range and sent the whole file in one go
@@ -504,7 +539,7 @@ class YouTubeDownloadManager(private val context: Context) {
             .header("Range", "bytes=$start-$end")
             .build()
         httpClient.newCall(request).execute().use { response ->
-            val body = response.body ?: throw IOException("Empty response body")
+            val body = response.body
             return when (response.code) {
                 206 -> {
                     val total = parseContentRangeTotal(response.header("Content-Range"))
@@ -516,7 +551,8 @@ class YouTubeDownloadManager(private val context: Context) {
                     out.write(bytes)
                     bytes.size.toLong()
                 }
-                200 -> {
+                // Asked to continue mid-file but got the whole file: only usable from the start
+                200 -> if (start > 0) throw RangeIgnored() else {
                     try {
                         body.byteStream().use { input -> copyWithProgress(input, out, body.contentLength()) {} }
                     } catch (e: IOException) {
@@ -547,6 +583,23 @@ class YouTubeDownloadManager(private val context: Context) {
             if (totalBytes > 0) {
                 onProgress(downloadedBytes.toFloat() / totalBytes.toFloat())
             }
+        }
+    }
+}
+
+/** The server answered a mid-file Range request with the whole file (see downloadInChunks). */
+private class RangeIgnored : RuntimeException()
+
+/** What a paused download had: which audio stream ([streamId], YouTube's itag) and its full size. */
+internal data class PartialDownload(val streamId: String, val totalBytes: Long) {
+    fun format(): String = "$streamId\n$totalBytes"
+
+    companion object {
+        fun parse(text: String?): PartialDownload? {
+            val lines = text?.lines() ?: return null
+            val total = lines.getOrNull(1)?.trim()?.toLongOrNull() ?: return null
+            val streamId = lines.first().trim().takeIf { it.isNotEmpty() } ?: return null
+            return if (total > 0) PartialDownload(streamId, total) else null
         }
     }
 }

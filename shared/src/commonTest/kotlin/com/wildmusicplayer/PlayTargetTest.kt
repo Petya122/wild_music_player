@@ -2,10 +2,13 @@ package com.wildmusicplayer
 
 import com.wildmusicplayer.data.PlayTarget
 import com.wildmusicplayer.data.Playlist
+import com.wildmusicplayer.data.OnlineTrack
+import com.wildmusicplayer.data.playQueue
 import com.wildmusicplayer.model.Song
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PlayTargetTest {
 
@@ -43,4 +46,29 @@ class PlayTargetTest {
         assertEquals("Playlist", PlayTarget.CustomPlaylist("gone").label(playlists))
         assertEquals("Most Played", PlayTarget.MostPlayed.label(playlists))
     }
+
+    // Car Test: one song on the phone, one online track that was downloaded, one that wasn't
+    private val mixed = Playlist(
+        id = "mix", name = "Car Test", songIds = listOf(1),
+        onlineTracks = listOf(
+            OnlineTrack(id = "a", title = "Downloaded", artist = "X", webUrl = "https://youtu.be/aaa"),
+            OnlineTrack(id = "b", title = "Only online", artist = "Y", webUrl = "https://youtu.be/bbb")
+        )
+    )
+    private val downloaded = mapOf("https://youtu.be/aaa" to 5L)
+
+    @Test
+    fun mixedPlaylistPlaysLikeInTheApp() {
+        // Online: phone song, the downloaded copy, then the stream
+        val online = mixed.playQueue(library, { downloaded[it] }, offline = false)
+        assertEquals(listOf(1L, 5L, Song.ONLINE_SONG_ID), online.map { it.id })
+        assertEquals("Only online", online.last().title)
+        assertTrue(online.last().isOnline)
+        // Offline: the stream is left out, the downloaded copy stays
+        assertEquals(listOf(1L, 5L), mixed.playQueue(library, { downloaded[it] }, offline = true).map { it.id })
+        // The widget and the tile go through the same queue
+        val widget = PlayTarget.CustomPlaylist("mix").songs(library, emptySet(), emptyMap(), listOf(mixed), { downloaded[it] }, offline = false)
+        assertEquals(online.map { it.mediaId }, widget.map { it.mediaId })
+    }
 }
+

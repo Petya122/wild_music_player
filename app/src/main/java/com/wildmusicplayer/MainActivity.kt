@@ -474,7 +474,11 @@ fun MusicPlayerApp(
         if (songs.isEmpty()) return@LaunchedEffect
         onShortcutHandled()
         val target = PlayTarget.fromKey(key) ?: return@LaunchedEffect
-        val toPlay = target.songs(songs, favoriteSongIds, playCounts, customPlaylists)
+        val toPlay = target.songs(
+            songs, favoriteSongIds, playCounts, customPlaylists,
+            downloadedIdFor = { DownloadIndex.getInstance(context).downloadedIdFor(it) },
+            offline = isOfflineOnlyMode
+        )
         if (toPlay.isEmpty()) {
             val gone = target is PlayTarget.CustomPlaylist && customPlaylists.none { it.id == target.id }
             if (gone) AppShortcuts.forgetPlaylist(context)
@@ -900,7 +904,8 @@ fun MusicPlayerApp(
                                 bottomPadding = contentBottomPadding,
                                 isOfflineOnlyMode = isOfflineOnlyMode,
                                 onSwitchToOnline = { setOfflineMode(false) },
-                                playlistRepository = playlistRepository
+                                playlistRepository = playlistRepository,
+                                librarySongIds = remember(songs) { songs.mapTo(HashSet()) { it.id } }
                             )
                         }
                     }

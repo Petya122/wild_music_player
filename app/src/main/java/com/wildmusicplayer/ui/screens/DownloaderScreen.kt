@@ -1,5 +1,7 @@
 package com.wildmusicplayer.ui.screens
 
+import com.wildmusicplayer.data.DownloadIndex
+import com.wildmusicplayer.data.getInstance
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -117,6 +119,8 @@ fun DownloaderScreen(
     isOfflineOnlyMode: Boolean = false,
     onSwitchToOnline: () -> Unit = {},
     playlistRepository: PlaylistRepository? = null,
+    // MediaStore IDs of the songs on the phone, so a ✓ disappears again when a download is deleted
+    librarySongIds: Set<Long> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -135,6 +139,13 @@ fun DownloaderScreen(
 
     val serviceActiveDownloads by SongDownloadService.activeDownloads.collectAsState()
     val serviceCompletedTracks by SongDownloadService.completedTrackIds.collectAsState()
+    // Downloaded before (also in earlier app sessions) and still on the phone
+    val downloadIndex = remember { DownloadIndex.getInstance(context) }
+    fun isOnPhone(track: YouTubeTrack): Boolean {
+        if (track.id in serviceCompletedTracks) return true
+        val id = downloadIndex.downloadedIdFor(track.webUrl.ifBlank { track.id }) ?: return false
+        return id in librarySongIds
+    }
 
     val networkPolicyManager = remember { NetworkPolicyManager.getInstance(context) }
     var trackPendingMobileConfirmation by remember { mutableStateOf<YouTubeTrack?>(null) }
@@ -629,7 +640,7 @@ fun DownloaderScreen(
             ) {
                 items(sortedResults, key = { it.id }) { track ->
                     val progress = serviceActiveDownloads[track.id]
-                    val isDownloaded = serviceCompletedTracks.contains(track.id)
+                    val isDownloaded = isOnPhone(track)
 
                     YouTubeTrackItem(
                         track = track,
@@ -650,7 +661,7 @@ fun DownloaderScreen(
     // Track Action Dialog when song card is clicked
     selectedTrackForAction?.let { track ->
         val progress = serviceActiveDownloads[track.id]
-        val isDownloaded = serviceCompletedTracks.contains(track.id)
+        val isDownloaded = isOnPhone(track)
 
         TrackActionDialog(
             track = track,

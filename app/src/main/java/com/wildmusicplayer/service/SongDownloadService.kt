@@ -116,7 +116,9 @@ class SongDownloadService : Service() {
 
         serviceScope.launch {
             var lastUpdateMs = 0L
-            val result = downloadManager.downloadTrack(track) { progress ->
+            // A pause keeps the bytes so far (it continues there); a cancel or failure doesn't
+            val keepPartial = { DownloadQueue.isPaused && DownloadQueue.items.value.any { it.track.id == track.id } }
+            val result = downloadManager.downloadTrack(track, keepPartial) { progress ->
                 // Paused (offline) or removed from the queue: stop while the bytes are still coming in
                 // (later the file is being saved, so let that finish)
                 if (progress < 0.9f && DownloadQueue.shouldStop(track.id)) throw CancellationException("Download stopped")

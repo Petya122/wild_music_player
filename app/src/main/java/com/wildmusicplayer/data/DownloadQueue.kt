@@ -60,7 +60,7 @@ object DownloadQueue {
     }
 
     /** A failed song waits again (at the end). */
-    fun retry(trackId: String) = synchronized(lock) {
+    fun retry(trackId: String): Unit = synchronized(lock) {
         val item = _items.value.find { it.track.id == trackId && it.state == DownloadState.FAILED } ?: return
         _items.value = _items.value.filter { it.track.id != trackId } + QueuedDownload(item.track)
     }
@@ -109,7 +109,7 @@ object DownloadQueue {
     }
 
     /** The download service ended mid-download (Android stopped it): that song waits at the front again. */
-    fun interrupted() = synchronized(lock) {
+    fun interrupted(): Unit = synchronized(lock) {
         val running = _items.value.filter { it.state == DownloadState.DOWNLOADING }
         if (running.isEmpty()) return
         _items.value = running.map { QueuedDownload(it.track) } + _items.value.filter { it.state != DownloadState.DOWNLOADING }

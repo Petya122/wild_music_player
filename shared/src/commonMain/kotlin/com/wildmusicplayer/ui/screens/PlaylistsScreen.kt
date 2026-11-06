@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.screens
 
+import com.wildmusicplayer.data.playQueue
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -539,22 +540,8 @@ fun PlaylistsScreen(
 
             // One queue for the whole playlist: local songs, then online tracks (the downloaded copy
             // if there is one, otherwise streamed). Undownloaded online tracks are skipped offline.
-            val playQueue = remember(allSongs, playlistSongs, playlist.onlineTracks, isOfflineOnlyMode) {
-                val onlineSongs = playlist.onlineTracks.mapNotNull { track ->
-                    val localMatch = downloadedCopyOf(track, allSongs, downloadIndex)
-                    when {
-                        localMatch != null -> localMatch
-                        isOfflineOnlyMode -> null
-                        else -> Song.fromOnline(
-                            title = track.title,
-                            artist = track.artist,
-                            webUrl = track.webUrl,
-                            durationSeconds = track.durationSeconds,
-                            thumbnailUrl = track.thumbnailUrl
-                        )
-                    }
-                }
-                (playlistSongs + onlineSongs).distinctBy { it.mediaId }
+            val playQueue = remember(allSongs, playlist, isOfflineOnlyMode) {
+                playlist.playQueue(allSongs, { downloadIndex.downloadedIdFor(it) }, isOfflineOnlyMode)
             }
             // Online tracks already downloaded count as local
             val downloadedOnline = playlist.onlineTracks.count { downloadedCopyOf(it, allSongs, downloadIndex) != null }

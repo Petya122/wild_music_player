@@ -84,18 +84,20 @@ class MusicControllerManager(private val context: Context) : PlayerController {
         val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
 
         controllerFuture.addListener({
-            mediaController = controllerFuture.get().apply {
-                addListener(PlayerListener())
-                _isConnected.value = true
-                syncPlayerState()
-            }
-            mediaController?.let { controller ->
-                val action = pendingAction
-                pendingAction = null
-                when {
-                    action != null -> action(controller)
-                    controller.mediaItemCount == 0 -> restoreSavedQueue(controller)
-                }
+            val controller = controllerFuture.get()
+            // Stored before reading its state: syncPlayerState() reads [mediaController]. (Reading it first
+            // found nothing, so opening the app while music played from the widget, tile or car showed no
+            // song or queue until the next song started.)
+            mediaController = controller
+            controller.addListener(PlayerListener())
+            _isConnected.value = true
+            syncPlayerState()
+
+            val action = pendingAction
+            pendingAction = null
+            when {
+                action != null -> action(controller)
+                controller.mediaItemCount == 0 -> restoreSavedQueue(controller)
             }
         }, ContextCompat.getMainExecutor(context))
     }

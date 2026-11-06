@@ -35,6 +35,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.WildMusicPlayer">
 
+        <!-- Android Auto: Wild Music shows up as a music app on the car's screen -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <!-- Main Compose Activity -->
         <activity
             android:name=".MainActivity"
@@ -61,8 +66,17 @@
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <!-- Cars (Android Auto) and other music browsers can list the library -->
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
+        <!-- Album covers for the car's screen (read-only, MediaStore album art only) -->
+        <provider
+            android:name=".service.ArtworkProvider"
+            android:authorities="${applicationId}.artwork"
+            android:exported="true" />
 
         <!-- Car radio / headset Play button: starts PlaybackService and resumes the last queue
              (PlaybackService.onPlaybackResumption), even when the app was closed -->

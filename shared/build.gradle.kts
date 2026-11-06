@@ -9,13 +9,17 @@ plugins {
 // The app's shared code: data, playlists, settings and the Compose screens. It is a Kotlin
 // Multiplatform module with only the Android target for now (the iOS app was removed in v0.9.4).
 kotlin {
-    androidLibrary {
+    android {
         namespace = "com.wildmusicplayer.shared"
         compileSdk = 37
         minSdk = 26
         withHostTestBuilder {}
     }
     jvmToolchain(17)
+    // expect/actual classes (FileStore etc.) are still "Beta" in Kotlin; they work fine, so no warning
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
 
     sourceSets {
         all {
@@ -28,10 +32,10 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
 
             // Shared screens (Compose Multiplatform)
-            api(compose.runtime)
-            api(compose.foundation)
-            api(compose.material3)
-            api(compose.ui)
+            api(libs.compose.runtime)
+            api(libs.compose.foundation)
+            api(libs.compose.material3)
+            api(libs.compose.ui)
             api(libs.compose.material.icons.extended)
             api(libs.coil.compose)
             implementation(libs.reorderable)
