@@ -1,7 +1,5 @@
 package com.wildmusicplayer.ui.components
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
@@ -29,6 +28,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +51,11 @@ fun AboutDialog(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    var showLicenses by rememberSaveable { mutableStateOf(false) }
+
+    if (showLicenses) {
+        OpenSourceLicensesDialog(onDismiss = { showLicenses = false })
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -163,8 +171,9 @@ fun AboutDialog(
                 val techStack = listOf(
                     "• Jetpack Compose & Material 3",
                     "• AndroidX Media3 (ExoPlayer)",
-                    "• Kotlin Coroutines & Flow",
-                    "• Coil Image Loading Library"
+                    "• NewPipeExtractor (YouTube)",
+                    "• LRCLIB (lyrics)",
+                    "• Coil, OkHttp & Kotlin Coroutines"
                 )
                 techStack.forEach { tech ->
                     Text(
@@ -175,19 +184,37 @@ fun AboutDialog(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // License notice (GPL-3.0 asks the app to show it)
+                Text(
+                    text = APP_LICENSE_NOTICE,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Spacer(modifier = Modifier.height(18.dp))
+
+                OutlinedButton(
+                    onClick = { showLicenses = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open Source Licenses")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // GitHub Link Button
                 OutlinedButton(
-                    onClick = {
-                        try {
-                            val intent = Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://github.com/Petya122/wild_music_player")
-                            )
-                            context.startActivity(intent)
-                        } catch (_: Exception) {}
-                    },
+                    onClick = { openWebPage(context, "https://github.com/Petya122/wild_music_player") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -197,7 +224,7 @@ fun AboutDialog(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Visit GitHub Repository")
+                    Text("Source Code on GitHub")
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
