@@ -1,5 +1,11 @@
 package com.wildmusicplayer.data
 
+import java.security.MessageDigest
+import androidx.core.content.pm.PackageInfoCompat
+import android.widget.Toast
+import android.os.Build
+import android.content.pm.PackageManager
+import android.content.pm.PackageInfo
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -76,8 +82,10 @@ class UpdateChecker private constructor(private val context: Context) {
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
                     val name = asset.optString("name", "")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url", "")
+                    val link = asset.optString("browser_download_url", "")
+                    // Only this repository's own release files
+                    if (name.endsWith(".apk", ignoreCase = true) && UpdateSafety.isReleaseUrl(link)) {
+                        apkUrl = link
                         break
                     }
                 }
@@ -116,18 +124,23 @@ class UpdateChecker private constructor(private val context: Context) {
             destinationFile.delete()
         }
 
+        if (!UpdateSafety.isReleaseUrl(apkUrl)) return@withContext null
+
         var connection: HttpURLConnection? = null
         try {
             var currentUrl = apkUrl
             var redirects = 0
             while (redirects < 5) {
+                // GitHub forwards to its file servers; nowhere else
+                if (!UpdateSafety.isAllowedRedirect(currentUrl)) return@withContext null
                 val url = URL(currentUrl)
                 connection = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 15000
                     readTimeout = 30000
                     setRequestProperty("User-Agent", "WildMusicPlayer")
-                    instanceFollowRedirects = true
+                    // Each hop is checked above
+                    instanceFollowRedirects = false
                 }
 
                 val code = connection.responseCode
@@ -181,6 +194,12 @@ class UpdateChecker private constructor(private val context: Context) {
      */
     fun triggerApkInstall(apkFile: File, caller: Context = context) {
         if (!apkFile.exists()) return
+        // Only a genuine, newer Wild Music signed with the same key goes to the installer
+        problemWithDownloadedApk(apkFile)?.let { problem ->
+            apkFile.delete()
+            Toast.makeText(caller, "$problem, so it wasn't installed. Try the update again later.", Toast.LENGTH_LONG).show()
+            return
+        }
 
         val apkUri = FileProvider.getUriForFile(
             context,
@@ -202,6 +221,56 @@ class UpdateChecker private constructor(private val context: Context) {
             }
             act = act.baseContext
         }
+    }
+
+    /** Why [apkFile] must not be installed (see [UpdateSafety.problemWith]), or null when it's fine. */
+    private fun problemWithDownloadedApk(apkFile: File): String? {
+        val pm = context.packageManager
+        val own = ownPackageInfo(pm) ?: return null
+        val apk = archivePackageInfo(pm, apkFile) ?: return "The update file is damaged"
+        return UpdateSafety.problemWith(
+            apkPackage = apk.packageName,
+            apkVersionCode = PackageInfoCompat.getLongVersionCode(apk),
+            apkCertificates = certificatesOf(apk),
+            ownPackage = context.packageName,
+            ownVersionCode = PackageInfoCompat.getLongVersionCode(own),
+            ownCertificates = certificatesOf(own)
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun ownPackageInfo(pm: PackageManager): PackageInfo? = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun archivePackageInfo(pm: PackageManager, apkFile: File): PackageInfo? = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** SHA-256 of each signing certificate, or null when Android didn't say. */
+    @Suppress("DEPRECATION")
+    private fun certificatesOf(info: PackageInfo): Set<String>? {
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signing = info.signingInfo ?: return null
+            if (signing.hasMultipleSigners()) signing.apkContentsSigners else signing.signingCertificateHistory
+        } else {
+            info.signatures
+        } ?: return null
+        val digest = MessageDigest.getInstance("SHA-256")
+        return signatures.map { signature -> digest.digest(signature.toByteArray()).joinToString("") { "%02x".format(it) } }.toSet()
     }
 
     /**

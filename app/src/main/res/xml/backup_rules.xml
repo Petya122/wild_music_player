@@ -1,13 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
--->
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android's automatic backup (Android 11 and older): playlists, favorites, play counts and settings are
+     kept, so they come back after a reinstall or on a new phone. Nothing secret is stored there. Caches
+     (stream cache, update files, half-finished downloads) are never backed up. -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <include domain="sharedpref" path="." />
+    <include domain="file" path="." />
+        <!-- Tied to this phone: folder permission and home-screen widget IDs don't carry over -->
+        <exclude domain="sharedpref" path="lyrics_folder.xml" />
+        <exclude domain="sharedpref" path="player_widget.xml" />
+        <exclude domain="sharedpref" path="playlist_widget.xml" />
 </full-backup-content>
