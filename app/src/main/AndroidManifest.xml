@@ -44,6 +44,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.WildMusicPlayer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -116,6 +117,7 @@
         <activity
             android:name=".widget.PlaylistWidgetConfigActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:theme="@style/Theme.WildMusicPlayer">

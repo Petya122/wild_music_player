@@ -140,6 +140,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.wildmusicplayer.BuildConfig
@@ -720,6 +721,16 @@ fun MusicPlayerApp(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
                         tonalElevation = 8.dp
                     ) {
+                        // At very big system font sizes the tab names can't fit side by side: they grow
+                        // to 130% at most (the icons say the rest), everything else in the app scales fully
+                        val fontScale = LocalDensity.current.fontScale
+                        val tabLabelStyle = MaterialTheme.typography.labelSmall.let { style ->
+                            if (fontScale > MAX_TAB_LABEL_SCALE) {
+                                style.copy(fontSize = style.fontSize * (MAX_TAB_LABEL_SCALE / fontScale))
+                            } else {
+                                style
+                            }
+                        }
                         // No Download tab in the Google Play version
                         NavigationTab.entries.filter { BuildConfig.YOUTUBE || it != NavigationTab.DOWNLOADER }.forEach { tab ->
                             NavigationBarItem(
@@ -737,9 +748,10 @@ fun MusicPlayerApp(
                                 label = {
                                     Text(
                                         text = tab.title,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = tabLabelStyle,
                                         maxLines = 1,
                                         softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
                                         fontWeight = if (!isSettingsOpen && currentTab == tab) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },
@@ -1089,3 +1101,6 @@ fun PermissionRequestView(onRequestPermission: () -> Unit) {
         }
     }
 }
+
+// The most the bottom tab names grow with the system font size (see the bottom bar)
+private const val MAX_TAB_LABEL_SCALE = 1.3f
