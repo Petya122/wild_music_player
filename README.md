@@ -17,6 +17,20 @@
 
 ---
 
+## Two versions
+
+| | **GitHub version** | **Google Play version** |
+|---|---|---|
+| Your music, playlists, lyrics files, widgets, car, Android Auto | ✓ | ✓ |
+| YouTube search, streaming and downloads | ✓ | — |
+| Online lyrics (LRCLIB) | ✓ | — (your own .lrc files only) |
+| Updates | From this repository, in the app | Through Google Play |
+| Internet access | Yes | None at all |
+| Package | `com.wildmusicplayer` | `com.wildmusicplayer.play` |
+
+Both are built from the same code (Gradle flavors `full` and `play`), and they can be installed side by
+side. Everything below describes the GitHub version unless it says otherwise.
+
 ## Features
 
 - **Your music library**: songs, albums, artists, folders, Most Played and Recently Added. Edit song
@@ -94,6 +108,9 @@ new lyrics lookups. Lyrics that were already found keep working.
 Android's own backup (if you turn it on) can save the app's playlists and settings to your Google
 account. It's handled by Android, not by this app.
 
+The **Google Play version** has no internet permission and sends nothing anywhere. The full privacy
+policy is in [PRIVACY.md](PRIVACY.md).
+
 ## Legal
 
 - **Not affiliated.** Wild Music Player is an independent project. It isn't affiliated with,
@@ -114,20 +131,24 @@ account. It's handled by Android, not by this app.
 
 You need JDK 17 and the Android SDK (Android Studio installs both).
 
+The GitHub version is the `full` flavor and the Google Play version is the `play` flavor:
+
 ```bash
-./gradlew :app:assembleDebug
+./gradlew :app:assembleFullDebug :app:assemblePlayDebug
 ```
 
 ```bash
-./gradlew :shared:testAndroid testDebugUnitTest
+./gradlew :shared:testAndroid testFullDebugUnitTest testPlayDebugUnitTest
 ```
 
-The debug APK lands in `app/build/outputs/apk/debug/`. A debug build has a different signature, so it
-can't update a copy installed from the releases: uninstall that copy first.
+The debug APKs land in `app/build/outputs/apk/full/debug/` and `app/build/outputs/apk/play/debug/`. A
+debug build has a different signature, so it can't update a copy installed from the releases: uninstall
+that copy first.
 
 Release builds need your own signing key. Copy `keystore.properties.template` to
-`keystore.properties` and fill it in. The real release key and its password are never in this
-repository.
+`keystore.properties` and fill it in. The Play bundle (`./gradlew bundlePlayRelease`) is signed with
+an upload key from `upload.properties` (same fields). The real keys and their passwords are never in
+this repository.
 
 **Source for every release.** Each APK on the
 [releases page](https://github.com/Petya122/wild_music_player/releases) is built from the git tag
@@ -156,6 +177,11 @@ licenses**.
 | [Guava](https://github.com/google/guava), JSR-305 annotations, JetBrains annotations, JSpecify | Apache-2.0 |
 
 All of them are compatible with the GPL-3.0.
+
+## Support
+
+Wild Music Player is free and has no ads. If you'd like to support it, you can buy me a coffee on
+[Ko-fi](https://ko-fi.com/petya122). Thank you!
 
 ## Security
 

@@ -12,6 +12,13 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// The Google Play upload key (only the play flavor uses it; Google re-signs for the store)
+val uploadPropertiesFile = rootProject.file("upload.properties")
+val uploadProperties = Properties()
+if (uploadPropertiesFile.exists()) {
+    uploadProperties.load(FileInputStream(uploadPropertiesFile))
+}
+
 android {
     namespace = "com.wildmusicplayer"
     compileSdk = 37
@@ -19,7 +26,7 @@ android {
     defaultConfig {
         applicationId = "com.wildmusicplayer"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 53
         versionName = "0.9.7"
 
@@ -36,17 +43,49 @@ android {
                 storePassword = keystoreProperties.getProperty("storePassword")
             }
         }
+        create("upload") {
+            if (uploadPropertiesFile.exists()) {
+                keyAlias = uploadProperties.getProperty("keyAlias")
+                keyPassword = uploadProperties.getProperty("keyPassword")
+                storeFile = rootProject.file(uploadProperties.getProperty("storeFile").removePrefix("../"))
+                storePassword = uploadProperties.getProperty("storePassword")
+            }
+        }
+    }
+
+    // Two versions of the app:
+    // - full: GitHub releases. YouTube search/streaming/downloads, self-update, online lyrics (LRCLIB).
+    // - play: Google Play. Only the music on the phone and the user's own lyrics files; Play updates it.
+    // The flags are constants, so R8 drops the code they switch off from the play build.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("full") {
+            dimension = "distribution"
+            buildConfigField("boolean", "YOUTUBE", "true")
+            buildConfigField("boolean", "SELF_UPDATE", "true")
+            buildConfigField("boolean", "ONLINE_LYRICS", "true")
+            buildConfigField("boolean", "DONATIONS", "true")
+            // Phones update only from APKs signed with this same key
+            signingConfig = signingConfigs.getByName(if (keystorePropertiesFile.exists()) "release" else "debug")
+        }
+        create("play") {
+            dimension = "distribution"
+            // Its own app on the phone: installs next to the GitHub version
+            applicationIdSuffix = ".play"
+            buildConfigField("boolean", "YOUTUBE", "false")
+            buildConfigField("boolean", "SELF_UPDATE", "false")
+            buildConfigField("boolean", "ONLINE_LYRICS", "false")
+            // Play's payments policy: no links to outside tips or donations in the app
+            buildConfigField("boolean", "DONATIONS", "false")
+            signingConfig = signingConfigs.getByName(if (uploadPropertiesFile.exists()) "upload" else "debug")
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            if (keystorePropertiesFile.exists()) {
-                signingConfig = signingConfigs.getByName("release")
-            } else {
-                signingConfig = signingConfigs.getByName("debug")
-            }
+            // Signed per flavor (see productFlavors)
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -96,9 +135,9 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    // Networking & YouTube Extraction
+    // Networking; YouTube extraction only in the full (GitHub) version
     implementation(libs.okhttp)
-    implementation(libs.newpipe.extractor)
+    "fullImplementation"(libs.newpipe.extractor)
 
 
     testImplementation(libs.junit)

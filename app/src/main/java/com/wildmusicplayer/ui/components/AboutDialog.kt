@@ -168,11 +168,11 @@ fun AboutDialog(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                val techStack = listOf(
+                val techStack = listOfNotNull(
                     "• Jetpack Compose & Material 3",
                     "• AndroidX Media3 (ExoPlayer)",
-                    "• NewPipeExtractor (YouTube)",
-                    "• LRCLIB (lyrics)",
+                    if (BuildConfig.YOUTUBE) "• NewPipeExtractor (YouTube)" else null,
+                    if (BuildConfig.ONLINE_LYRICS) "• LRCLIB (lyrics)" else null,
                     "• Coil, OkHttp & Kotlin Coroutines"
                 )
                 techStack.forEach { tech ->
@@ -211,6 +211,26 @@ fun AboutDialog(
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Support the developer (not in the Google Play version: Play doesn't allow outside donation links)
+                if (BuildConfig.DONATIONS) {
+                    OutlinedButton(
+                        onClick = { openWebPage(context, "https://ko-fi.com/petya122") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Support on Ko-fi")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
                 // GitHub Link Button
                 OutlinedButton(

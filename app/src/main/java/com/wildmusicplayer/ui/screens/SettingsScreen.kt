@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.data.DownloadQueue
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.model.Song
@@ -49,10 +50,21 @@ enum class SettingsPage(val title: String, val summary: String, val icon: ImageV
     APPEARANCE("Appearance", "Theme, accent color, keep screen on", Icons.Default.Palette),
     SOUND("Playback & Sound", "Normalization, decibel boost, player volume", Icons.Default.GraphicEq),
     CAR("Car & Bluetooth", "Resume with Play, reconnecting, sound per device", Icons.Default.DirectionsCar),
-    LIBRARY("Library & Lyrics", "Short clips, recordings, lyrics folder, fixing tags", Icons.Default.Audiotrack),
+    LIBRARY(
+        "Library & Lyrics",
+        if (BuildConfig.YOUTUBE) "Short clips, recordings, lyrics folder, fixing tags" else "Short clips, recordings, lyrics folder",
+        Icons.Default.Audiotrack
+    ),
     DOWNLOADS("Downloads & Network", "Offline Mode, mobile data, download queue", Icons.Default.CloudDownload),
     BACKUP("Backup & Restore", "Playlists and favorites to a file and back", Icons.Default.Backup),
-    UPDATES("Updates & Storage", "New versions, what's new, cache", Icons.Default.SystemUpdate)
+    UPDATES(
+        if (BuildConfig.SELF_UPDATE) "Updates & Storage" else "Storage",
+        if (BuildConfig.SELF_UPDATE) "New versions, what's new, cache" else "Version, cache",
+        Icons.Default.SystemUpdate
+    );
+
+    /** False for the pages the Google Play version doesn't have (no downloads there). */
+    val inThisVersion: Boolean get() = this != DOWNLOADS || BuildConfig.YOUTUBE
 }
 
 /**
@@ -97,7 +109,7 @@ fun SettingsScreen(
         ) {
             when (page) {
                 null -> {
-                    SettingsPage.entries.forEach { entry ->
+                    SettingsPage.entries.filter { it.inThisVersion }.forEach { entry ->
                         SettingsLinkCard(icon = entry.icon, title = entry.title, subtitle = entry.summary, onClick = { onOpenPage(entry) })
                     }
                     PermissionsCard()
@@ -119,7 +131,8 @@ fun SettingsScreen(
                 SettingsPage.LIBRARY -> {
                     LibrarySection(filterShortAudio, onFilterShortAudioToggled, filterRecordings, onFilterRecordingsToggled)
                     LyricsSection()
-                    if (downloadManager != null) TagRepairCard(downloadManager, isOfflineOnlyMode, onLibraryChanged)
+                    // Fixing tags looks songs up on YouTube: only in the GitHub version
+                    if (BuildConfig.YOUTUBE && downloadManager != null) TagRepairCard(downloadManager, isOfflineOnlyMode, onLibraryChanged)
                 }
                 SettingsPage.DOWNLOADS -> {
                     val queued by DownloadQueue.items.collectAsState()

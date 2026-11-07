@@ -29,7 +29,8 @@ fun lyricsRepository(context: Context): LyricsRepository =
                 http = OkHttpGet,
                 isOffline = { network.isOfflineOnlyMode },
                 now = System::currentTimeMillis,
-                localFiles = LyricsFolder.getInstance(appContext)
+                localFiles = LyricsFolder.getInstance(appContext),
+                onlineLookups = BuildConfig.ONLINE_LYRICS
             ).also { lyricsInstance = it }
         }
     }

@@ -154,6 +154,26 @@ class LyricsTest {
     }
 
     @Test
+    fun playVersionOnlyUsesTheUsersOwnFiles() = runTest {
+        // Online lookups off (Google Play): LRCLIB is never asked, even when online
+        val noOnline = LyricsRepository(
+            FakeFileStore(), { error("the Play version never looks lyrics up") }, { false }, { 1_000L },
+            onlineLookups = false
+        )
+        assertEquals(LyricsResult.NoOwnFile, noOnline.lyricsFor(song))
+
+        val withFolder = LyricsRepository(
+            FakeFileStore(), { error("the Play version never looks lyrics up") }, { false }, { 1_000L },
+            localFiles = { "[00:03.00]From the folder" },
+            onlineLookups = false
+        )
+        assertEquals(
+            LyricsResult.Synced(listOf(LyricLine(3_000, "From the folder")), source = LyricsSource.FOLDER),
+            withFolder.lyricsFor(song)
+        )
+    }
+
+    @Test
     fun busyServerIsAskedAgain() = runTest {
         var calls = 0
         val repo = repository(FakeFileStore()) {

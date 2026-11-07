@@ -67,6 +67,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -113,7 +114,7 @@ fun NowPlayingScreen(
     val audioEffectsManager = LocalAudioEffects.current
     val sleepTimer = LocalSleepTimer.current
     val lyricsRepository = LocalLyrics.current
-    var showLyrics by remember { mutableStateOf(false) }
+    var showLyrics by rememberSaveable { mutableStateOf(false) }
     // Looked up only while the lyrics are showing; null while loading
     var lyrics by remember(song.mediaId) { mutableStateOf<LyricsResult?>(null) }
     LaunchedEffect(song.mediaId, showLyrics) {

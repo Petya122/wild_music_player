@@ -131,6 +131,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -359,22 +360,22 @@ fun MusicPlayerApp(
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
     }
     val songs by library.songs.collectAsState()
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     val hasPermission by library.hasPermission.collectAsState()
-    var isPlayerExpanded by remember { mutableStateOf(false) }
-    var showQueue by remember { mutableStateOf(false) }
-    var isSettingsOpen by remember { mutableStateOf(false) }
+    var isPlayerExpanded by rememberSaveable { mutableStateOf(false) }
+    var showQueue by rememberSaveable { mutableStateOf(false) }
+    var isSettingsOpen by rememberSaveable { mutableStateOf(false) }
     // The Settings page open (null = the list of pages)
-    var settingsPage by remember { mutableStateOf<SettingsPage?>(null) }
+    var settingsPage by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
     // Back from a Settings page goes to the list; from the list, out of Settings
     val closeSettingsLevel = {
         if (settingsPage != null) settingsPage = null else isSettingsOpen = false
     }
-    var showAboutDialog by remember { mutableStateOf(false) }
-    var showDownloads by remember { mutableStateOf(false) }
+    var showAboutDialog by rememberSaveable { mutableStateOf(false) }
+    var showDownloads by rememberSaveable { mutableStateOf(false) }
     val downloadQueue by DownloadQueue.items.collectAsState()
-    var isSplashVisible by remember { mutableStateOf(true) }
-    var showWhatsNewDialog by remember { mutableStateOf(false) }
+    var isSplashVisible by rememberSaveable { mutableStateOf(true) }
+    var showWhatsNewDialog by rememberSaveable { mutableStateOf(false) }
 
     val settings = library.settings
     val keepScreenOn by settings.keepScreenOn.collectAsState()
@@ -437,8 +438,9 @@ fun MusicPlayerApp(
         delay(1800)
         isSplashVisible = false
 
-        // Wait for splash screen fade-out animation to complete before popping up the update log dialog
-        if (isNewVersion) {
+        // Wait for splash screen fade-out animation to complete before popping up the update log dialog.
+        // The log tells the GitHub version's story (YouTube features), so the Play version doesn't show it.
+        if (isNewVersion && BuildConfig.YOUTUBE) {
             delay(600)
             showWhatsNewDialog = true
         }
@@ -463,7 +465,7 @@ fun MusicPlayerApp(
         if (completedTrackIds.isNotEmpty()) library.onDownloadsCompleted()
     }
 
-    var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
+    var currentTab by rememberSaveable { mutableStateOf(NavigationTab.HOME) }
 
     val recentlyPlayedSongs by library.recentlyPlayedSongs.collectAsState()
     val favoriteSongs by library.favoriteSongs.collectAsState()
@@ -634,8 +636,8 @@ fun MusicPlayerApp(
                         }
                     },
                     actions = {
-                        // The download queue, while there's something in it
-                        if (downloadQueue.isNotEmpty()) {
+                        // The download queue, while there's something in it (the GitHub version only)
+                        if (BuildConfig.YOUTUBE && downloadQueue.isNotEmpty()) {
                             IconButton(onClick = { showDownloads = true }) {
                                 BadgedBox(badge = { Badge { Text("${downloadQueue.size}") } }) {
                                     Icon(
@@ -646,8 +648,8 @@ fun MusicPlayerApp(
                                 }
                             }
                         }
-                        // Quick Mode Toggle Pill (Online vs Offline)
-                        Surface(
+                        // Quick Mode Toggle Pill (Online vs Offline); the Play version is always offline
+                        if (BuildConfig.YOUTUBE) Surface(
                             onClick = { setOfflineMode(!isOfflineOnlyMode) },
                             shape = RoundedCornerShape(20.dp),
                             color = if (isOfflineOnlyMode) {
@@ -718,7 +720,8 @@ fun MusicPlayerApp(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
                         tonalElevation = 8.dp
                     ) {
-                        NavigationTab.entries.forEach { tab ->
+                        // No Download tab in the Google Play version
+                        NavigationTab.entries.filter { BuildConfig.YOUTUBE || it != NavigationTab.DOWNLOADER }.forEach { tab ->
                             NavigationBarItem(
                                 selected = (!isSettingsOpen && currentTab == tab),
                                 onClick = {
@@ -875,7 +878,8 @@ fun MusicPlayerApp(
                                 },
                                 downloadIndex = library.downloadIndex,
                                 isOfflineOnlyMode = isOfflineOnlyMode,
-                                downloader = trackDownloader,
+                                showOnlineFilters = BuildConfig.YOUTUBE,
+                                downloader = if (BuildConfig.YOUTUBE) trackDownloader else null,
                                 onRemoveOnlineTrack = { playlistId, trackId ->
                                     playlistRepository.removeOnlineTrackFromPlaylist(playlistId, trackId)
                                 },
@@ -897,7 +901,7 @@ fun MusicPlayerApp(
                                 onPlaylistPlayed = { AppShortcuts.rememberPlaylist(context, it) }
                             )
                         }
-                        NavigationTab.DOWNLOADER -> {
+                        NavigationTab.DOWNLOADER -> if (BuildConfig.YOUTUBE) {
                             DownloaderScreen(
                                 downloadManager = downloadManager,
                                 controllerManager = controllerManager,
@@ -1018,7 +1022,7 @@ fun MusicPlayerApp(
         }
 
         // The download queue (top bar button, Settings)
-        if (showDownloads) {
+        if (BuildConfig.YOUTUBE && showDownloads) {
             DownloadQueueSheet(
                 onRetry = { id ->
                     if (networkPolicyManager.checkDownloadPrecondition() is DownloadPrecondition.Allowed) {

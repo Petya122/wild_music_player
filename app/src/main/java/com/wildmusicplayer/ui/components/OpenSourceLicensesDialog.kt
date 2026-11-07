@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.wildmusicplayer.BuildConfig
 import com.wildmusicplayer.R
 
 /** A license text shipped in res/raw, so it can be read offline. */
@@ -56,15 +57,22 @@ enum class LicenseText(val title: String, @RawRes val res: Int) {
     MPL_RHINO("Mozilla Public License 2.0 (Rhino)", R.raw.license_mpl_rhino),
 }
 
-data class OpenSourceLibrary(val name: String, val license: String, val url: String, val text: LicenseText)
+/** [youTubeOnly]: part of the YouTube extractor, so only in the GitHub (full) version. */
+data class OpenSourceLibrary(
+    val name: String,
+    val license: String,
+    val url: String,
+    val text: LicenseText,
+    val youTubeOnly: Boolean = false
+)
 
 /** What the APK includes (see README "Third-party software"). */
-val openSourceLibraries = listOf(
-    OpenSourceLibrary("NewPipeExtractor", "GPL-3.0-or-later", "https://github.com/TeamNewPipe/NewPipeExtractor", LicenseText.GPL_3),
-    OpenSourceLibrary("nanojson (NewPipe's copy)", "Apache-2.0", "https://github.com/TeamNewPipe/nanojson", LicenseText.APACHE_2),
-    OpenSourceLibrary("Mozilla Rhino", "MPL-2.0", "https://github.com/mozilla/rhino", LicenseText.MPL_RHINO),
-    OpenSourceLibrary("jsoup", "MIT", "https://jsoup.org", LicenseText.MIT_JSOUP),
-    OpenSourceLibrary("Protocol Buffers (Java lite)", "BSD-3-Clause", "https://github.com/protocolbuffers/protobuf", LicenseText.BSD_PROTOBUF),
+private val allLibraries = listOf(
+    OpenSourceLibrary("NewPipeExtractor", "GPL-3.0-or-later", "https://github.com/TeamNewPipe/NewPipeExtractor", LicenseText.GPL_3, youTubeOnly = true),
+    OpenSourceLibrary("nanojson (NewPipe's copy)", "Apache-2.0", "https://github.com/TeamNewPipe/nanojson", LicenseText.APACHE_2, youTubeOnly = true),
+    OpenSourceLibrary("Mozilla Rhino", "MPL-2.0", "https://github.com/mozilla/rhino", LicenseText.MPL_RHINO, youTubeOnly = true),
+    OpenSourceLibrary("jsoup", "MIT", "https://jsoup.org", LicenseText.MIT_JSOUP, youTubeOnly = true),
+    OpenSourceLibrary("Protocol Buffers (Java lite)", "BSD-3-Clause", "https://github.com/protocolbuffers/protobuf", LicenseText.BSD_PROTOBUF, youTubeOnly = true),
     OpenSourceLibrary("AndroidX: Core, Activity, Lifecycle, Media3, Compose, WorkManager, Palette", "Apache-2.0", "https://developer.android.com/jetpack/androidx", LicenseText.APACHE_2),
     OpenSourceLibrary("Compose Multiplatform", "Apache-2.0", "https://github.com/JetBrains/compose-multiplatform", LicenseText.APACHE_2),
     OpenSourceLibrary("Kotlin and kotlinx (coroutines, serialization)", "Apache-2.0", "https://kotlinlang.org", LicenseText.APACHE_2),
@@ -75,6 +83,9 @@ val openSourceLibraries = listOf(
     OpenSourceLibrary("Accompanist Drawable Painter", "Apache-2.0", "https://github.com/google/accompanist", LicenseText.APACHE_2),
     OpenSourceLibrary("Guava, JSR-305, JetBrains annotations, JSpecify", "Apache-2.0", "https://github.com/google/guava", LicenseText.APACHE_2),
 )
+
+/** The libraries in this version of the app (the Google Play one has no YouTube extractor). */
+val openSourceLibraries = allLibraries.filter { BuildConfig.YOUTUBE || !it.youTubeOnly }
 
 /** The app's own license notice, then every library; tap one to read its license. */
 @Composable

@@ -81,6 +81,7 @@ fun LyricsView(
             LyricsResult.Instrumental -> Message("♪ Instrumental ♪")
             LyricsResult.NotFound -> Message("No lyrics found for this song")
             LyricsResult.Offline -> Message("Lyrics for this song aren't saved yet.\nTurn off Offline Mode to look them up.")
+            LyricsResult.NoOwnFile -> Message("No lyrics file for this song yet.\nLoad a .lrc file below, or pick your lyrics folder in Settings.")
             LyricsResult.Failed -> Message("Couldn't reach the lyrics service.\nCheck your connection and try again.")
         }
     }

@@ -29,6 +29,8 @@ sealed interface LyricsResult {
     data object NotFound : LyricsResult
     /** Offline Mode is on and this song's lyrics were never saved. */
     data object Offline : LyricsResult
+    /** A version without online lyrics (Google Play) found no lyrics file of the user's for this song. */
+    data object NoOwnFile : LyricsResult
     /** No connection, or the lyrics service didn't answer. */
     data object Failed : LyricsResult
 }

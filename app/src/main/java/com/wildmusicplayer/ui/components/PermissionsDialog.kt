@@ -1,5 +1,6 @@
 package com.wildmusicplayer.ui.components
 
+import com.wildmusicplayer.BuildConfig
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -131,13 +132,14 @@ fun PermissionsDialog(
                         desc = "Keeps your music playing smoothly when your phone screen turns off, and streams track titles & metadata to car Bluetooth displays (AVRCP)."
                     )
 
-                    PermissionExplanationItem(
+                    // The Google Play version uses no internet and doesn't update itself
+                    if (BuildConfig.YOUTUBE) PermissionExplanationItem(
                         icon = Icons.Default.Public,
                         title = "Internet Access",
                         desc = "Used solely for checking GitHub app updates and fetching audio tracks you choose to download in the Downloader tab."
                     )
 
-                    PermissionExplanationItem(
+                    if (BuildConfig.SELF_UPDATE) PermissionExplanationItem(
                         icon = Icons.Default.SystemUpdate,
                         title = "In-App Updates",
                         desc = "Allows the app updater to install downloaded update APKs directly onto your phone when you tap 'Download & Install Update'."

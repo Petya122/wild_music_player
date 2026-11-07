@@ -36,7 +36,9 @@ class LyricsRepository(
     private val http: HttpGet,
     private val isOffline: () -> Boolean,
     private val now: () -> Long,
-    private val localFiles: LocalLyricsFiles? = null
+    private val localFiles: LocalLyricsFiles? = null,
+    // False in the Google Play version: only the user's own .lrc files, never LRCLIB
+    private val onlineLookups: Boolean = true
 ) {
 
     /**
@@ -56,6 +58,7 @@ class LyricsRepository(
         if (saved != null && (saved.hasAnswer || now() - saved.savedAt < RETRY_NOT_FOUND_MS)) {
             return saved.toResult()
         }
+        if (!onlineLookups) return LyricsResult.NoOwnFile
         if (isOffline()) return saved?.toResult() ?: LyricsResult.Offline
 
         val found = lookUp(query) ?: return saved?.toResult() ?: LyricsResult.Failed

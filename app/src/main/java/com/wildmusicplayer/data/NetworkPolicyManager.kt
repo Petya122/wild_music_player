@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import com.wildmusicplayer.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,7 +45,9 @@ class NetworkPolicyManager private constructor(private val context: Context) {
         }
     }
 
-    private val _offlineOnlyMode = MutableStateFlow(prefs.getBoolean(KEY_OFFLINE_ONLY_MODE, false))
+    // The Google Play version has no online songs: always offline, so a playlist restored from the
+    // GitHub version's backup never tries to stream its YouTube tracks
+    private val _offlineOnlyMode = MutableStateFlow(!BuildConfig.YOUTUBE || prefs.getBoolean(KEY_OFFLINE_ONLY_MODE, false))
 
     /** Observable Offline Only Mode, shared by every screen. */
     val offlineOnlyMode: StateFlow<Boolean> = _offlineOnlyMode.asStateFlow()
@@ -60,6 +63,7 @@ class NetworkPolicyManager private constructor(private val context: Context) {
     var isOfflineOnlyMode: Boolean
         get() = _offlineOnlyMode.value
         set(value) {
+            if (!BuildConfig.YOUTUBE) return
             if (value) {
                 DownloadQueue.pause(DownloadPause.OFFLINE)
             } else if (DownloadQueue.resume(DownloadPause.OFFLINE)) {

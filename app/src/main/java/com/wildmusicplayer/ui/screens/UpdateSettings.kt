@@ -76,7 +76,7 @@ internal fun UpdateAndStorageSections(onShowWhatsNew: () -> Unit) {
         cacheSizeBytes = updateChecker.getCacheSizeBytes()
     }
 
-    SettingsCard(icon = Icons.Default.SystemUpdate, title = "Updates & Version") {
+    SettingsCard(icon = Icons.Default.SystemUpdate, title = if (BuildConfig.SELF_UPDATE) "Updates & Version" else "Version") {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -95,7 +95,8 @@ internal fun UpdateAndStorageSections(onShowWhatsNew: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            TextButton(
+            // The update log tells the GitHub version's story (YouTube features included)
+            if (BuildConfig.YOUTUBE) TextButton(
                 onClick = onShowWhatsNew,
                 shape = RoundedCornerShape(10.dp)
             ) {
@@ -106,244 +107,247 @@ internal fun UpdateAndStorageSections(onShowWhatsNew: () -> Unit) {
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        // Checking, downloading and installing new versions: only the GitHub version updates itself
+        if (BuildConfig.SELF_UPDATE) {
+            Spacer(modifier = Modifier.height(10.dp))
 
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 6.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-        )
-
-        // Toggle: Auto-Prompt Install vs Keep on Hold
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    val next = !autoPromptInstall
-                    autoPromptInstall = next
-                    updateChecker.autoPromptInstall = next
-                },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(
-                    text = "Auto-Prompt Install After Download",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Ask to install immediately when download finishes, or keep ready on hold",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = autoPromptInstall,
-                onCheckedChange = {
-                    autoPromptInstall = it
-                    updateChecker.autoPromptInstall = it
-                }
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 6.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
             )
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        if (availableUpdate != null) {
-            val update = availableUpdate!!
-            val downloadedFile = remember(availableUpdate, isDownloadingUpdate, onHoldRefreshTrigger) {
-                updateChecker.getDownloadedUpdateFile(update.latestVersion)
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ),
-                shape = RoundedCornerShape(14.dp)
+            // Toggle: Auto-Prompt Install vs Keep on Hold
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val next = !autoPromptInstall
+                        autoPromptInstall = next
+                        updateChecker.autoPromptInstall = next
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
-                        text = "New Release Available: ${update.latestVersion}! 🎉",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        text = "Auto-Prompt Install After Download",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Ask to install immediately when download finishes, or keep ready on hold",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = autoPromptInstall,
+                    onCheckedChange = {
+                        autoPromptInstall = it
+                        updateChecker.autoPromptInstall = it
+                    }
+                )
+            }
 
-                    if (isDownloadingUpdate) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Downloading update in background...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "${(downloadProgress * 100).toInt()}%",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            LinearProgressIndicator(
-                                progress = { downloadProgress },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        }
-                    } else if (downloadedFile != null) {
-                        // APK is already on disk and kept on hold!
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = "✅ Update ${update.latestVersion} is downloaded and ready on hold.",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        updateChecker.triggerApkInstall(downloadedFile, context)
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.weight(1f)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (availableUpdate != null) {
+                val update = availableUpdate!!
+                val downloadedFile = remember(availableUpdate, isDownloadingUpdate, onHoldRefreshTrigger) {
+                    updateChecker.getDownloadedUpdateFile(update.latestVersion)
+                }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "New Release Available: ${update.latestVersion}! 🎉",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (isDownloadingUpdate) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.SystemUpdate,
-                                        contentDescription = null
+                                    Text(
+                                        text = "Downloading update in background...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Install Update Now")
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        updateChecker.deleteDownloadedUpdate(update.latestVersion)
-                                        onHoldRefreshTrigger++
-                                        scope.launch {
-                                            cacheSizeBytes = updateChecker.getCacheSizeBytes()
-                                        }
-                                        Toast.makeText(context, "Downloaded update removed", Toast.LENGTH_SHORT).show()
-                                    },
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete Download",
-                                        modifier = Modifier.size(18.dp)
+                                    Text(
+                                        text = "${(downloadProgress * 100).toInt()}%",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { downloadProgress },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
                             }
-                        }
-                    } else {
-                        Button(
-                            onClick = {
-                                isDownloadingUpdate = true
-                                downloadProgress = 0f
-                                updateStatusText = null
-                                scope.launch {
-                                    val apkFile = updateChecker.downloadUpdateSilently(
-                                        apkUrl = update.downloadUrl,
-                                        fileName = "wild_music_player-${update.latestVersion}.apk",
-                                        onProgress = { progress ->
-                                            downloadProgress = progress
-                                        }
-                                    )
-                                    isDownloadingUpdate = false
-                                    onHoldRefreshTrigger++
-                                    if (apkFile != null) {
-                                        cacheSizeBytes = updateChecker.getCacheSizeBytes()
-                                        if (autoPromptInstall) {
-                                            pendingInstallDialogFile = apkFile
-                                            pendingInstallVersion = update.latestVersion
-                                        } else {
-                                            Toast.makeText(
-                                                context,
-                                                "Update downloaded! Kept on hold ready to install.",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                    } else {
-                                        updateStatusText = "Download failed. Please check internet connection."
+                        } else if (downloadedFile != null) {
+                            // APK is already on disk and kept on hold!
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = "✅ Update ${update.latestVersion} is downloaded and ready on hold.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            updateChecker.triggerApkInstall(downloadedFile, context)
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SystemUpdate,
+                                            contentDescription = null
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Install Update Now")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            updateChecker.deleteDownloadedUpdate(update.latestVersion)
+                                            onHoldRefreshTrigger++
+                                            scope.launch {
+                                                cacheSizeBytes = updateChecker.getCacheSizeBytes()
+                                            }
+                                            Toast.makeText(context, "Downloaded update removed", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete Download",
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Download Update")
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    isDownloadingUpdate = true
+                                    downloadProgress = 0f
+                                    updateStatusText = null
+                                    scope.launch {
+                                        val apkFile = updateChecker.downloadUpdateSilently(
+                                            apkUrl = update.downloadUrl,
+                                            fileName = "wild_music_player-${update.latestVersion}.apk",
+                                            onProgress = { progress ->
+                                                downloadProgress = progress
+                                            }
+                                        )
+                                        isDownloadingUpdate = false
+                                        onHoldRefreshTrigger++
+                                        if (apkFile != null) {
+                                            cacheSizeBytes = updateChecker.getCacheSizeBytes()
+                                            if (autoPromptInstall) {
+                                                pendingInstallDialogFile = apkFile
+                                                pendingInstallVersion = update.latestVersion
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Update downloaded! Kept on hold ready to install.",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                        } else {
+                                            updateStatusText = "Download failed. Please check internet connection."
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudDownload,
+                                    contentDescription = null
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Download Update")
+                            }
                         }
                     }
                 }
-            }
-        } else {
-            OutlinedButton(
-                onClick = {
-                    isCheckingUpdates = true
-                    updateStatusText = null
-                    scope.launch {
-                        when (val result = updateChecker.checkForUpdates(BuildConfig.VERSION_NAME)) {
-                            is UpdateResult.UpdateAvailable -> {
-                                availableUpdate = result.info
-                                updateStatusText = null
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        isCheckingUpdates = true
+                        updateStatusText = null
+                        scope.launch {
+                            when (val result = updateChecker.checkForUpdates(BuildConfig.VERSION_NAME)) {
+                                is UpdateResult.UpdateAvailable -> {
+                                    availableUpdate = result.info
+                                    updateStatusText = null
+                                }
+                                is UpdateResult.UpToDate -> {
+                                    updateStatusText = "You are on the latest version!"
+                                }
+                                is UpdateResult.Error -> {
+                                    updateStatusText = "Update check failed: ${result.message}"
+                                }
                             }
-                            is UpdateResult.UpToDate -> {
-                                updateStatusText = "You are on the latest version!"
-                            }
-                            is UpdateResult.Error -> {
-                                updateStatusText = "Update check failed: ${result.message}"
-                            }
+                            isCheckingUpdates = false
                         }
-                        isCheckingUpdates = false
+                    },
+                    enabled = !isCheckingUpdates,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isCheckingUpdates) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Checking GitHub...")
+                    } else {
+                        Text("Check for Updates")
                     }
-                },
-                enabled = !isCheckingUpdates,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (isCheckingUpdates) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Checking GitHub...")
-                } else {
-                    Text("Check for Updates")
                 }
             }
-        }
 
-        if (updateStatusText != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = updateStatusText!!,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
+            if (updateStatusText != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = updateStatusText!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
         }
     }
 
     SettingsCard(
         icon = Icons.Default.Storage,
         title = "Storage & Cache",
-        subtitle = "Free up temporary files, stream cache, and old APKs"
+        subtitle = if (BuildConfig.SELF_UPDATE) "Free up temporary files, stream cache, and old APKs" else "Free up temporary files"
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -399,7 +403,7 @@ internal fun UpdateAndStorageSections(onShowWhatsNew: () -> Unit) {
         }
     }
 
-    if (pendingInstallDialogFile != null) {
+    if (BuildConfig.SELF_UPDATE && pendingInstallDialogFile != null) {
         val file = pendingInstallDialogFile!!
         AlertDialog(
             onDismissRequest = { pendingInstallDialogFile = null },

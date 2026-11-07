@@ -192,7 +192,7 @@ fun DownloaderScreen(
                         val results = downloadManager.search(trimmed, searchMode)
                         searchResults = results
                         if (results.isEmpty()) {
-                            searchError = "No songs found for '$trimmed'. Try another search term or paste a link."
+                            searchError = noResultsMessage(trimmed, networkPolicyManager.isConnected())
                         }
                     } catch (e: Exception) {
                         searchError = "Search failed: ${e.localizedMessage ?: "Unknown error"}"
@@ -225,7 +225,7 @@ fun DownloaderScreen(
             val results = downloadManager.search(trimmed, searchMode)
             searchResults = results
             if (results.isEmpty()) {
-                searchError = "No songs found for '$trimmed'. Try another search term or paste a link."
+                searchError = noResultsMessage(trimmed, networkPolicyManager.isConnected())
             } else {
                 downloadManager.addSearchHistory(trimmed)
                 searchHistory = downloadManager.getSearchHistory()
@@ -1472,3 +1472,8 @@ private fun AddToPlaylistDialog(
         }
     )
 }
+
+/** Empty results: say so plainly when the phone simply has no internet. */
+private fun noResultsMessage(query: String, connected: Boolean): String =
+    if (connected) "No songs found for '$query'. Try another search term or paste a link."
+    else "No internet connection. Turn on Wi-Fi or mobile data and try again."

@@ -139,6 +139,8 @@ fun PlaylistsScreen(
     onDeletePlaylist: (String) -> Unit,
     downloadIndex: DownloadIndex,
     isOfflineOnlyMode: Boolean = false,
+    // False in a version without online songs: no All / Offline / Hybrid filter
+    showOnlineFilters: Boolean = true,
     downloader: TrackDownloader? = null,
     onRemoveOnlineTrack: ((playlistId: String, trackId: String) -> Unit)? = null,
     onDeleteSong: ((Song) -> Unit)? = null,
@@ -249,7 +251,7 @@ fun PlaylistsScreen(
                 }
 
                 // Filter Chips Row (All, Offline Ready, Hybrid Cloud)
-                item {
+                if (showOnlineFilters) item {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1012,7 +1014,8 @@ private fun PlaylistDetailView(
         // Hybrid Sync Offline Banner
         // Only tracks not on the phone yet: Sync All never downloads a song twice
         val notDownloaded = onlineTracks.filter { downloadedCopyOf(it, allSongs, downloadIndex) == null }
-        if (notDownloaded.isNotEmpty()) {
+        // Without a downloader (a version with no downloads) there's nothing to sync
+        if (notDownloaded.isNotEmpty() && downloader != null) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -31,9 +31,9 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run Unit Tests
-        run: ./gradlew :shared:testAndroid testDebugUnitTest -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
+        run: ./gradlew :shared:testAndroid testFullDebugUnitTest testPlayDebugUnitTest -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
 
-      - name: Build Release APK
+      - name: Build Release APK (full version, for GitHub)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -48,8 +48,38 @@ jobs:
           echo "storePassword=$KEYSTORE_PASSWORD" >> keystore.properties
           echo "keyAlias=wildmusic" >> keystore.properties
           echo "keyPassword=$KEYSTORE_PASSWORD" >> keystore.properties
-          ./gradlew assembleRelease -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
-          cp app/build/outputs/apk/release/*.apk wild_music_player-${{ github.ref_name }}.apk
+          ./gradlew assembleFullRelease -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
+          cp app/build/outputs/apk/full/release/*.apk wild_music_player-${{ github.ref_name }}.apk
+
+      # The Google Play version: an app bundle signed with the Play upload key. Not attached to the
+      # GitHub release (the in-app updater must never see it); download it from this run's artifacts and
+      # upload it in Play Console. Skipped until the upload key is in the release environment.
+      - name: Build Play Bundle (play version, for Google Play)
+        id: play
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$UPLOAD_KEYSTORE_BASE64" ] || [ -z "$UPLOAD_KEYSTORE_PASSWORD" ]; then
+            echo "::notice::No Play upload key (UPLOAD_KEYSTORE_BASE64 / UPLOAD_KEYSTORE_PASSWORD) yet: skipping the Play bundle."
+            exit 0
+          fi
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 --decode > upload.jks
+          echo "storeFile=../upload.jks" > upload.properties
+          echo "storePassword=$UPLOAD_KEYSTORE_PASSWORD" >> upload.properties
+          echo "keyAlias=upload" >> upload.properties
+          echo "keyPassword=$UPLOAD_KEYSTORE_PASSWORD" >> upload.properties
+          ./gradlew bundlePlayRelease -Dorg.gradle.java.home="$JAVA_HOME" --no-daemon
+          cp app/build/outputs/bundle/playRelease/*.aab wild_music_player-play-${{ github.ref_name }}.aab
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - name: Keep Play Bundle as Run Artifact
+        if: steps.play.outputs.built == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: play-bundle-${{ github.ref_name }}
+          path: wild_music_player-play-${{ github.ref_name }}.aab
+          retention-days: 30
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3

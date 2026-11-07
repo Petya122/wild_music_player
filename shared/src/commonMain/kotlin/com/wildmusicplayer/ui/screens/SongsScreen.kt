@@ -122,7 +122,7 @@ fun SongsScreen(
         when (view) {
             LibraryView.SONGS -> AllSongsList(
                 songs, favoriteSongIds, currentPlayingSongId, bottomPadding,
-                onSongClick, onShuffleAll, onToggleFavorite, onDeleteSong, onAddToPlaylist
+                onPlayInList, onShuffleAll, onToggleFavorite, onDeleteSong, onAddToPlaylist
             )
             LibraryView.ALBUMS -> AlbumGrid(groups, bottomPadding) { openGroupKey = it.key }
             LibraryView.ARTISTS, LibraryView.FOLDERS -> GroupList(groups, bottomPadding) { openGroupKey = it.key }
@@ -136,7 +136,8 @@ private fun AllSongsList(
     favoriteSongIds: Set<Long>,
     currentPlayingSongId: Long?,
     bottomPadding: Dp,
-    onSongClick: (Song) -> Unit,
+    // The queue follows the list as shown, so Next plays the song below this one
+    onPlayInList: (Song, List<Song>) -> Unit,
     onShuffleAll: () -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onDeleteSong: ((Song) -> Unit)?,
@@ -264,7 +265,7 @@ private fun AllSongsList(
                     song = song,
                     isCurrent = isCurrent,
                     isFavorite = isFavorite,
-                    onClick = { onSongClick(song) },
+                    onClick = { onPlayInList(song, sortedSongs) },
                     onToggleFavorite = { onToggleFavorite(song.id) },
                     onDelete = onDeleteSong?.let { delete -> { delete(song) } },
                     onAddToPlaylist = onAddToPlaylist?.let { add -> { add(song) } }

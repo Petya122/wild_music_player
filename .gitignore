@@ -13,3 +13,5 @@ local.properties
 *.keystore
 keystore.properties
 keystore_base64.txt
+upload.properties
+upload_base64.txt

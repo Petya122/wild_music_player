@@ -12,6 +12,14 @@ import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService
 import com.wildmusicplayer.widget.PlaylistWidget
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.ServiceCompat
+import android.Manifest
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.widget.Toast
 import android.view.KeyEvent
 import android.content.Context
@@ -461,7 +469,16 @@ class PlaybackService : MediaLibraryService() {
     private class OutsideRequest(val target: String, val shuffle: Boolean)
     private var outsideRequest: OutsideRequest? = null
 
+    // Started by a Play press from outside (widget, tile, car, headset): Android started this service
+    // in the foreground and kills the app unless it shows a notification within seconds
+    private var startedForPlayPress = false
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startedForPlayPress = intent?.action == Intent.ACTION_MEDIA_BUTTON
+        if (startedForPlayPress) {
+            mainHandler.removeCallbacks(playPressWatchdog)
+            mainHandler.postDelayed(playPressWatchdog, PLAY_PRESS_WATCHDOG_MS)
+        }
         val target = intent?.getStringExtra(EXTRA_START_TARGET)
         if (target != null && ::exoPlayer.isInitialized) {
             if (target != START_RESUME) {
@@ -530,6 +547,9 @@ class PlaybackService : MediaLibraryService() {
                 shuffle = true
             }
             if (songs.isEmpty()) {
+                val reason = if (canReadMusic()) "No songs found on this phone" else "Open Wild Music Player and allow access to your music first"
+                Toast.makeText(this@PlaybackService, reason, Toast.LENGTH_LONG).show()
+                endPlayPressWithoutMusic(reason)
                 result.setException(UnsupportedOperationException("No songs"))
                 return@launch
             }
@@ -540,6 +560,68 @@ class PlaybackService : MediaLibraryService() {
             )
         }
         return result
+    }
+
+    /**
+     * Any other way a Play press can end without music (for example Android refusing audio focus
+     * while another app plays on screen): if the player hasn't come to the foreground by now,
+     * end the press cleanly instead of letting Android stop the app ("isn't responding").
+     */
+    private val playPressWatchdog = Runnable {
+        if (startedForPlayPress && !isInForeground()) {
+            // Not starting now: don't let it start later out of nowhere either
+            mediaSession?.player?.pause()
+            endPlayPressWithoutMusic("Couldn't start playing")
+        }
+    }
+
+    private fun isInForeground(): Boolean = try {
+        getSystemService(android.app.NotificationManager::class.java).activeNotifications.any {
+            it.notification.flags and android.app.Notification.FLAG_FOREGROUND_SERVICE != 0
+        }
+    } catch (e: Exception) {
+        true
+    }
+
+    private fun canReadMusic(): Boolean {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * A Play press from outside found nothing to play (no music access, no songs, or resume turned off).
+     * Android started this service in the foreground for it and kills the app ("did not call
+     * startForeground") unless a notification shows, so show one for a moment, then stop.
+     */
+    private fun endPlayPressWithoutMusic(reason: String) {
+        if (!startedForPlayPress) return
+        startedForPlayPress = false
+        try {
+            val notifications = NotificationManagerCompat.from(this)
+            notifications.createNotificationChannel(
+                NotificationChannelCompat.Builder(NOTHING_TO_PLAY_CHANNEL, NotificationManagerCompat.IMPORTANCE_LOW)
+                    .setName("Player start")
+                    .build()
+            )
+            val notification = NotificationCompat.Builder(this, NOTHING_TO_PLAY_CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Nothing to play")
+                .setContentText(reason)
+                .setSilent(true)
+                .build()
+            ServiceCompat.startForeground(
+                this, NOTHING_TO_PLAY_ID, notification,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0
+            )
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        } catch (e: Exception) {
+            // Not allowed in the foreground right now: nothing more to do
+        }
+        stopSelf()
     }
 
     // Empty queues aren't saved: "Stop" clears the saved queue on purpose (MusicControllerManager)
@@ -775,6 +857,7 @@ class PlaybackService : MediaLibraryService() {
                 return songsFor(request)
             }
             if (!resumeSettings.resumeFromPlayButton) {
+                endPlayPressWithoutMusic("Resume with Play Button is turned off")
                 return Futures.immediateFailedFuture(UnsupportedOperationException("Resume is turned off"))
             }
             // Nothing saved (after Stop, or a fresh install): the widget's playlist or everything shuffled,
@@ -798,6 +881,10 @@ class PlaybackService : MediaLibraryService() {
     companion object {
         /** For [startFromOutside]: play the last queue again (or shuffle everything when there's none). */
         const val START_RESUME = "resume"
+        private const val NOTHING_TO_PLAY_CHANNEL = "player_start"
+        private const val NOTHING_TO_PLAY_ID = 1002
+        // Android allows about 10 seconds to show the notification after such a start
+        private const val PLAY_PRESS_WATCHDOG_MS = 8_000L
         private const val EXTRA_START_TARGET = "com.wildmusicplayer.START_TARGET"
         private const val EXTRA_START_SHUFFLE = "com.wildmusicplayer.START_SHUFFLE"
 
