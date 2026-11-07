@@ -38,6 +38,18 @@ private class ReleaseNotes(val version: String, val entries: List<ChangelogEntry
 // Newest first. Add the next release at the top; older notes stay below as history.
 private val releaseHistory = listOf(
     ReleaseNotes(
+        "0.9.8", listOf(
+            ChangelogEntry("🎨", "New Look", "A new Wave W logo: on the app icon (it follows your themed icons too), the start screen and the notification."),
+            ChangelogEntry("🖼️", "Sharp Covers for Streamed Songs", "Songs you stream from YouTube now show their cover in full quality instead of a blurry small one."),
+            ChangelogEntry("⏭️", "Next Plays the Song Below", "Tap a song in Songs and Next continues down the list in the order you see it (Recently Added, Title…). Before, it followed A–Z, and on the last title Next did nothing."),
+            ChangelogEntry("🛡️", "No More \"Isn't Responding\" from Outside", "The widget, the tile and the car's Play button no longer make the app crash or hang when there's nothing it can play, or when another app is playing on screen."),
+            ChangelogEntry("📱", "Stays Where You Were", "Switching dark mode or the font size no longer throws you back to Home or closes the player. The app now always stays upright."),
+            ChangelogEntry("🔠", "Big Font Friendly", "With a very large system font, the bottom tab names now fit on one line."),
+            ChangelogEntry("📜", "Licenses & Support", "About → Open Source Licenses lists every library and its license; the source code is linked there too. If you'd like to support the app: Support on Ko-fi, also in About."),
+            ChangelogEntry("📶", "Clear Offline Message", "Searching online without a connection now says \"No internet connection\" instead of \"No songs found\".")
+        )
+    ),
+    ReleaseNotes(
         "0.9.7", listOf(
             ChangelogEntry("🚘", "Android Auto", "Wild Music on the car's screen: Home (Continue, Shuffle all, Recently Played, Favorites), Playlists, Albums and Artists, each list with a Shuffle row on top. Ask \"Hey Google, play Basic Element on Wild Music\" or search while parked. Because the app isn't from the Play Store, turn on Android Auto → Developer settings → Unknown sources once."),
             ChangelogEntry("📱", "Queue Shows After a Closed-App Start", "Music started from the playlist widget, the tile or the car while the app was closed now shows in the app right away, with its queue. Before, the app looked empty until the next song."),
