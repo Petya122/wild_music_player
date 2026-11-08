@@ -1,0 +1,42 @@
+Wild Music Player plays the music that's already on your phone. No account, no ads, no tracking, and no internet connection at all: everything stays on your device.
+
+🎵 YOUR LIBRARY
+• All your songs, albums, artists and folders, with sorting and fast search
+• Favorites, Most Played, Recently Added and your own playlists
+• Drag to reorder, rename, undo, and play any list in order or shuffled
+• Listening stats: your top songs, artists and albums
+• Edit song details: fix the title, artist, album or cover inside the file
+
+🎤 LYRICS
+• Synced lyrics that follow the song, from your own .lrc files
+• Pick a lyrics folder once, or load a file for a single song
+• Fix the timing if a line comes early or late
+
+🎚️ SOUND
+• Equalizer with presets, plus a decibel boost for quiet recordings
+• Volume leveling so quiet and loud songs sound alike
+• Smooth crossfade between songs
+• Sleep timer
+
+🚗 CAR & BLUETOOTH
+• Song titles on your car's display
+• Press Play on the car radio or headset to continue where you left off
+• Music continues when your car reconnects
+• Separate sound settings for each Bluetooth device: car, headphones, phone
+• Android Auto support
+
+📱 EVERYWHERE ON YOUR PHONE
+• Home screen widgets: the player, and a one-tap playlist button
+• Quick Settings tile to start or pause from anywhere
+• Long-press the app icon for Shuffle all, Favorites or your last playlist
+• Lock screen and notification controls
+
+🎨 MADE FOR YOU
+• Light, dark and true black themes with accent colors
+• Big-font friendly
+• Back up your playlists and favorites to a file, and restore them on a new phone
+
+🔒 PRIVATE BY DESIGN
+Wild Music Player has no internet permission, so it can't send anything anywhere. It only reads your music files to play them.
+
+Free and open source under the GNU GPL v3.0.

@@ -256,13 +256,16 @@ fun NowPlayingScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Large Album Artwork: swipe it left/right for the next/previous song
+            // Large Album Artwork: swipe it left/right for the next/previous song.
+            // It takes only the height left after the controls, so on a shorter screen (16:9) the
+            // cover gets smaller instead of squeezing the play buttons.
             SwipeToSkip(
                 onNext = onSkipNext,
                 onPrevious = onSkipPrevious,
                 modifier = Modifier
+                    .weight(1f, fill = false)
                     .fillMaxWidth(0.85f)
-                    .aspectRatio(1f)
+                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
             ) {
                 Box(
                     modifier = Modifier

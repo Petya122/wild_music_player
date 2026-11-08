@@ -159,7 +159,12 @@ private fun SyncedLyrics(
     val listState = rememberLazyListState()
     LaunchedEffect(current) {
         if (current >= 0 && !listState.isScrollInProgress) {
-            listState.animateScrollToItem((current - 2).coerceAtLeast(0))
+            // The current line goes to the middle, so a line that wraps onto two rows isn't cut off
+            // at the bottom of a small lyrics card
+            val info = listState.layoutInfo
+            val viewport = info.viewportEndOffset - info.viewportStartOffset
+            val lineSize = info.visibleItemsInfo.firstOrNull { it.index == current }?.size ?: (viewport / 5)
+            listState.animateScrollToItem(current, -((viewport - lineSize) / 2).coerceAtLeast(0))
         }
     }
 

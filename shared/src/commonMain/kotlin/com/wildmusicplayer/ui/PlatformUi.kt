@@ -10,6 +10,9 @@ import com.wildmusicplayer.platform.SleepTimer
 /** Shows a short message (a toast on Android). Provided by the app. */
 val LocalShowMessage = staticCompositionLocalOf<(String) -> Unit> { {} }
 
+/** False in a version without online songs (Google Play): texts don't mention streams then. */
+val LocalHasOnlineSongs = staticCompositionLocalOf { true }
+
 /** The player's volume and effects controls. Provided by each app. */
 val LocalAudioEffects = staticCompositionLocalOf<AudioEffects> { error("LocalAudioEffects not provided") }
 

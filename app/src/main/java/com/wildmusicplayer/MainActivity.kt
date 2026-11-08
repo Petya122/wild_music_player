@@ -39,6 +39,7 @@ import com.wildmusicplayer.data.lyricsRepository
 import com.wildmusicplayer.service.SleepTimerManager
 import com.wildmusicplayer.service.AndroidTrackDownloader
 import com.wildmusicplayer.ui.LocalShowMessage
+import com.wildmusicplayer.ui.LocalHasOnlineSongs
 import com.wildmusicplayer.ui.LocalAudioEffects
 import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.CompositionLocalProvider
@@ -278,6 +279,7 @@ class MainActivity : ComponentActivity() {
                 LocalAudioEffects provides AudioEffectsManager.getInstance(appContext),
                 LocalQueueActions provides QueueActions(controllerManager::playNext, controllerManager::addToQueue),
                 LocalSleepTimer provides SleepTimerManager,
+                LocalHasOnlineSongs provides BuildConfig.YOUTUBE,
                 LocalLyrics provides lyricsRepository(appContext),
                 LocalArtworkColors provides remember { AndroidArtworkColors(appContext) },
                 LocalSongInfo provides remember { AndroidSongInfo(appContext, libraryViewModel.playlists) },

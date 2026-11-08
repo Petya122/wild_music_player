@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.wildmusicplayer.ui.LocalHasOnlineSongs
 import com.wildmusicplayer.platform.MAX_CROSSFADE_SECONDS
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -322,7 +323,7 @@ fun SoundSettingsSheet(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Measures each song and evens out the volume between tracks. Online streams play as they are.",
+                        text = "Measures each song and evens out the volume between tracks." + if (LocalHasOnlineSongs.current) " Online streams play as they are." else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -370,7 +371,7 @@ private fun CrossfadeSection(seconds: Int, onChange: (Int) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Songs fade into each other. Not with repeat-one, online streams or \"after this song\".",
+                text = if (LocalHasOnlineSongs.current) "Songs fade into each other. Not with repeat-one, online streams or \"after this song\"." else "Songs fade into each other. Not with repeat-one or \"after this song\".",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
