@@ -46,6 +46,28 @@ data class YouTubeTrack(
     }
 }
 
+/**
+ * A YouTube playlist as loaded for importing. [tracks] are the playable songs (only the first page for
+ * a preview); [skipped] counts deleted, private or blocked videos; [truncated] is true when the playlist
+ * has more songs than [MAX_PLAYLIST_TRACKS].
+ */
+data class YouTubePlaylist(
+    val id: String,
+    val name: String,
+    val uploader: String,
+    val thumbnailUrl: String?,
+    val totalCount: Long,
+    val tracks: List<YouTubeTrack>,
+    val skipped: Int = 0,
+    val truncated: Boolean = false
+)
+
+/** The most songs one playlist import takes (YouTube playlists can hold up to 5000). */
+const val MAX_PLAYLIST_TRACKS = 2000
+
+/** YouTube answered, but the content isn't there for us (private, deleted, blocked); [message] says so. */
+class YouTubeUnavailableException(message: String) : Exception(message)
+
 enum class SearchMode(val label: String) {
     SONGS("Songs"),
     VIDEOS("Videos")

@@ -100,6 +100,12 @@ import coil3.request.ImageRequest
 import com.wildmusicplayer.data.DownloadIndex
 import com.wildmusicplayer.data.OnlineTrack
 import com.wildmusicplayer.data.Playlist
+import com.wildmusicplayer.data.PLAYLIST_AUTO_UPDATE_MS
+import com.wildmusicplayer.data.updatedAgoText
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.filled.Sync
+import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import com.wildmusicplayer.data.foldersOf
 import com.wildmusicplayer.data.isDownloadedCopyOf
 import com.wildmusicplayer.model.Song
@@ -155,7 +161,9 @@ fun PlaylistsScreen(
     // How often each song was played, for the automatic "Most Played" playlist
     playCounts: Map<Long, Int> = emptyMap(),
     // A custom playlist started playing (for the app icon's "last playlist" shortcut)
-    onPlaylistPlayed: (Playlist) -> Unit = {}
+    onPlaylistPlayed: (Playlist) -> Unit = {},
+    // GitHub version: "Update from YouTube" for an imported playlist (how many songs it added, or why it failed)
+    onUpdateFromYouTube: (suspend (Playlist) -> Result<Int>)? = null
 ) {
     val mostPlayedSongs = remember(allSongs, playCounts) {
         allSongs.filter { (playCounts[it.id] ?: 0) > 0 }
@@ -557,9 +565,19 @@ fun PlaylistsScreen(
                 "$totalCount tracks"
             }
 
+            // Imported from YouTube: where from, the update button, and a quiet update when it's been a while
+            val source = playlist.source
+            val now = remember(source?.updatedAt) { Clock.System.now().toEpochMilliseconds() }
+            val updateFromYouTube: (suspend () -> Result<Int>)? =
+                if (source != null && onUpdateFromYouTube != null) suspend { onUpdateFromYouTube(playlist) } else null
+
             PlaylistDetailView(
                 title = playlist.name,
                 subtitle = subtitle,
+                sourceLabel = source?.let { "From YouTube · ${updatedAgoText(it.updatedAt, now)}" },
+                onUpdateFromYouTube = updateFromYouTube,
+                autoUpdate = updateFromYouTube != null && !isOfflineOnlyMode &&
+                    now - (source?.updatedAt ?: now) > PLAYLIST_AUTO_UPDATE_MS,
                 songs = playlistSongs,
                 onlineTracks = playlist.onlineTracks,
                 allSongs = allSongs,
@@ -914,9 +932,38 @@ private fun PlaylistDetailView(
     onRemoveFromPlaylist: ((Song) -> Unit)? = null,
     // Only custom playlists can be renamed and reordered
     onRename: ((String) -> Unit)? = null,
-    onReorder: ((songIds: List<Long>, onlineTrackIds: List<String>) -> Unit)? = null
+    onReorder: ((songIds: List<Long>, onlineTrackIds: List<String>) -> Unit)? = null,
+    // Imported from YouTube: "From YouTube · updated 3 h ago", the update button, and whether to update now
+    sourceLabel: String? = null,
+    onUpdateFromYouTube: (suspend () -> Result<Int>)? = null,
+    autoUpdate: Boolean = false
 ) {
     val showMessage = LocalShowMessage.current
+    val updateScope = rememberCoroutineScope()
+    var isUpdating by remember { mutableStateOf(false) }
+    // quiet: the automatic update only speaks up when it found new songs
+    val runUpdate: (Boolean) -> Unit = { quiet ->
+        val update = onUpdateFromYouTube
+        if (update != null && !isUpdating) {
+            isUpdating = true
+            updateScope.launch {
+                val result = update()
+                isUpdating = false
+                result.onSuccess { added ->
+                    when {
+                        added == 1 -> showMessage("1 new song added from YouTube")
+                        added > 1 -> showMessage("$added new songs added from YouTube")
+                        !quiet -> showMessage("Already up to date with YouTube")
+                    }
+                }.onFailure { error ->
+                    if (!quiet) showMessage(error.message ?: "Couldn't update from YouTube")
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        if (autoUpdate) runUpdate(true)
+    }
     val queueActions = LocalQueueActions.current
     var detailFilter by remember { mutableStateOf(PlaylistDetailFilter.ALL) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -983,6 +1030,24 @@ private fun PlaylistDetailView(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
+                if (sourceLabel != null) {
+                    Text(
+                        text = if (isUpdating) "Updating from YouTube…" else sourceLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (onUpdateFromYouTube != null) {
+                IconButton(onClick = { runUpdate(false) }, enabled = !isUpdating) {
+                    if (isUpdating) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Sync, contentDescription = "Update from YouTube", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
             if (onRename != null) {
                 IconButton(onClick = { showRenameDialog = true }) {

@@ -148,6 +148,7 @@ import com.wildmusicplayer.data.AudioRepository
 import com.wildmusicplayer.data.PlaylistRepository
 import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.YouTubeDownloadManager
+import com.wildmusicplayer.data.YouTubePlaylistImporter
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.service.LoudnessAnalysisWorker
@@ -448,6 +449,7 @@ fun MusicPlayerApp(
     }
 
     val playlistRepository = library.playlists
+    val playlistImporter = remember { YouTubePlaylistImporter(downloadManager, playlistRepository, networkPolicyManager) }
     val exportPlaylist = rememberPlaylistExporter(songs)
     val playCounts by playlistRepository.playCounts.collectAsState()
     val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
@@ -910,7 +912,13 @@ fun MusicPlayerApp(
                                 onRestoreSongToPlaylist = playlistRepository::insertSongInPlaylist,
                                 onRestoreOnlineTrack = playlistRepository::insertOnlineTrackInPlaylist,
                                 onReorderPlaylist = playlistRepository::reorderPlaylist,
-                                onPlaylistPlayed = { AppShortcuts.rememberPlaylist(context, it) }
+                                onPlaylistPlayed = { AppShortcuts.rememberPlaylist(context, it) },
+                                // Playlists imported from YouTube keep up with it (GitHub version)
+                                onUpdateFromYouTube = if (BuildConfig.YOUTUBE) {
+                                    { playlist -> playlistImporter.update(playlist) }
+                                } else {
+                                    null
+                                }
                             )
                         }
                         NavigationTab.DOWNLOADER -> if (BuildConfig.YOUTUBE) {

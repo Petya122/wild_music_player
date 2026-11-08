@@ -8,7 +8,10 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request as OkHttpRequest
@@ -167,7 +170,8 @@ class YouTubeDownloadManager(private val context: Context) {
                     trimmed.contains("youtu.be/", ignoreCase = true)
 
             if (isUrl) {
-                val cleanUrl = normalizeUrl(trimmed)
+                // Just the video: NewPipe refuses a song link that also carries "&list=…" (copied inside a playlist)
+                val cleanUrl = youTubeVideoId(trimmed)?.let { "https://www.youtube.com/watch?v=$it" } ?: normalizeUrl(trimmed)
                 val streamInfo = StreamInfo.getInfo(cleanUrl)
                 return@withContext listOf(
                     YouTubeTrack(
@@ -223,6 +227,70 @@ class YouTubeDownloadManager(private val context: Context) {
             )
         }
     }
+
+    /**
+     * Loads the YouTube playlist [playlistId] (public or unlisted). With [allPages] false only its first
+     * page (about 100 songs), enough for a preview; otherwise every song up to [MAX_PLAYLIST_TRACKS],
+     * telling [onProgress] how many are loaded so far. Throws [YouTubeUnavailableException] for a private
+     * or deleted playlist, and an IOException when the connection fails.
+     */
+    suspend fun fetchPlaylist(
+        playlistId: String,
+        allPages: Boolean,
+        onProgress: (Int) -> Unit = {}
+    ): YouTubePlaylist = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        val url = youTubePlaylistUrl(playlistId)
+        val info = try {
+            PlaylistInfo.getInfo(ServiceList.YouTube, url)
+        } catch (e: ContentNotAvailableException) {
+            throw YouTubeUnavailableException(
+                "This playlist is private or no longer exists. Only public and unlisted playlists can be imported."
+            )
+        }
+        val items = info.relatedItems.toMutableList()
+        var nextPage = info.nextPage
+        var hasMore = info.hasNextPage()
+        if (allPages) {
+            onProgress(items.size)
+            while (hasMore && items.size < MAX_PLAYLIST_TRACKS) {
+                ensureActive()
+                val page = PlaylistInfo.getMoreItems(ServiceList.YouTube, url, nextPage)
+                items += page.items
+                nextPage = page.nextPage
+                hasMore = page.hasNextPage()
+                onProgress(items.size)
+            }
+        }
+        // Deleted and private videos stay in a playlist as "[Deleted video]" / "[Private video]"
+        val playable = items.filter { item ->
+            val name = item.name.orEmpty()
+            name.isNotBlank() && !unavailableVideo.matches(name) && item.url.isNotBlank()
+        }
+        val tracks = playable.take(MAX_PLAYLIST_TRACKS).map { item ->
+            YouTubeTrack(
+                id = item.url,
+                title = item.name ?: "Unknown Title",
+                // "Queen - Topic" (YouTube Music's channels) → "Queen"
+                uploaderName = cleanChannelName(item.uploaderName.orEmpty()).ifBlank { "Unknown Artist" },
+                durationSeconds = item.duration,
+                thumbnailUrl = largestImageUrl(item.thumbnails),
+                webUrl = item.url
+            )
+        }
+        YouTubePlaylist(
+            id = playlistId,
+            name = info.name?.takeIf { it.isNotBlank() } ?: "YouTube playlist",
+            uploader = cleanChannelName(info.uploaderName.orEmpty()),
+            thumbnailUrl = largestImageUrl(info.thumbnails),
+            totalCount = info.streamCount,
+            tracks = tracks,
+            skipped = items.size - playable.size,
+            truncated = allPages && (hasMore || playable.size > MAX_PLAYLIST_TRACKS)
+        )
+    }
+
+    private val unavailableVideo = Regex("""\[(Deleted|Private) video]""", RegexOption.IGNORE_CASE)
 
     // Thumbnail lists run small → large; pick the biggest known size (or the last one if sizes are unknown)
     private fun largestImageUrl(images: List<Image>?): String? {

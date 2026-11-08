@@ -41,7 +41,10 @@ object PlaylistBackup {
                     songs = describe(playlist.songIds),
                     onlineTracks = playlist.onlineTracks.map {
                         BackupTrackJson(it.id, it.title, it.artist, it.durationSeconds, it.thumbnailUrl, it.webUrl)
-                    }
+                    },
+                    youTubePlaylistId = playlist.source?.playlistId,
+                    youTubeKnownVideoIds = playlist.source?.knownVideoIds?.toList().orEmpty(),
+                    youTubeUpdatedAt = playlist.source?.updatedAt ?: 0L
                 )
             },
             favorites = describe(repository.favoriteSongIds.value),
@@ -69,7 +72,10 @@ object PlaylistBackup {
                 onlineTracks = saved.onlineTracks.map {
                     OnlineTrack(it.id, it.title, it.artist, it.durationSeconds, it.thumbnailUrl, it.webUrl)
                 },
-                createdAt = saved.createdAt
+                createdAt = saved.createdAt,
+                source = saved.youTubePlaylistId?.let {
+                    PlaylistSource(it, saved.youTubeKnownVideoIds.toSet(), saved.youTubeUpdatedAt)
+                }
             )
         }
         val favorites = backup.favorites.mapNotNull { matcher.find(it) }.toSet()
@@ -130,7 +136,11 @@ internal class BackupPlaylistJson(
     val name: String,
     val createdAt: Long = 0L,
     val songs: List<BackupSongJson> = emptyList(),
-    val onlineTracks: List<BackupTrackJson> = emptyList()
+    val onlineTracks: List<BackupTrackJson> = emptyList(),
+    // A playlist imported from YouTube: its playlist and every video imported so far
+    val youTubePlaylistId: String? = null,
+    val youTubeKnownVideoIds: List<String> = emptyList(),
+    val youTubeUpdatedAt: Long = 0L
 )
 
 @Serializable

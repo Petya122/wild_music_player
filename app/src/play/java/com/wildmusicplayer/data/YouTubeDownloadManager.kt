@@ -24,6 +24,9 @@ class YouTubeDownloadManager(context: Context) {
 
     suspend fun fetchTrackDetails(track: YouTubeTrack): YouTubeTrack = track
 
+    suspend fun fetchPlaylist(playlistId: String, allPages: Boolean, onProgress: (Int) -> Unit = {}): YouTubePlaylist =
+        throw UnsupportedOperationException("No YouTube in this version")
+
     suspend fun downloadTrack(
         track: YouTubeTrack,
         keepPartial: () -> Boolean = { false },

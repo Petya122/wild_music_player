@@ -99,6 +99,10 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.data.YouTubeTrack
+import kotlinx.coroutines.flow.MutableStateFlow
+import com.wildmusicplayer.data.YouTubePlaylistImporter
+import com.wildmusicplayer.data.youTubePlaylistId
+import com.wildmusicplayer.data.youTubeVideoId
 import com.wildmusicplayer.service.MusicControllerManager
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -174,13 +178,23 @@ fun DownloaderScreen(
         }
     }
 
+    // A pasted YouTube playlist link gets an import card; a link to just a playlist isn't searched as well
+    val playlistLinkId = remember(searchQuery) { youTubePlaylistId(searchQuery) }
+    val isPlaylistOnlyLink = playlistLinkId != null && youTubeVideoId(searchQuery) == null
+    val playlistImporter = remember(playlistRepository) {
+        playlistRepository?.let { YouTubePlaylistImporter(downloadManager, it, networkPolicyManager) }
+    }
+    val importedPlaylists by (playlistRepository?.customPlaylists ?: remember { MutableStateFlow(emptyList()) }).collectAsState()
+
     // Direct search execution
     val executeSearch = { query: String ->
         if (isOfflineOnlyMode) {
             Toast.makeText(context, "Offline Only Mode is active. Switch to Online Mode to search.", Toast.LENGTH_SHORT).show()
         } else {
             val trimmed = query.trim()
-            if (trimmed.isNotBlank()) {
+            if (youTubePlaylistId(trimmed) != null && youTubeVideoId(trimmed) == null) {
+                focusManager.clearFocus()
+            } else if (trimmed.isNotBlank()) {
                 focusManager.clearFocus()
                 isSearching = true
                 searchError = null
@@ -210,7 +224,8 @@ fun DownloaderScreen(
             return@LaunchedEffect
         }
         val trimmed = searchQuery.trim()
-        if (trimmed.isEmpty()) {
+        if (trimmed.isEmpty() || (youTubePlaylistId(trimmed) != null && youTubeVideoId(trimmed) == null)) {
+            // Nothing typed, or a playlist link (the import card handles that)
             searchResults = emptyList()
             searchError = null
             isSearching = false
@@ -436,7 +451,17 @@ fun DownloaderScreen(
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        if (isSearching) {
+        if (playlistLinkId != null && playlistImporter != null) {
+            YouTubePlaylistImportCard(
+                playlistId = playlistLinkId,
+                importer = playlistImporter,
+                existing = importedPlaylists.firstOrNull { it.source?.playlistId == playlistLinkId }
+            )
+        }
+
+        if (isPlaylistOnlyLink) {
+            // Only the import card above
+        } else if (isSearching) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

@@ -26,8 +26,23 @@ data class Playlist(
     val name: String,
     val songIds: List<Long> = emptyList(),
     val onlineTracks: List<OnlineTrack> = emptyList(),
-    val createdAt: Long = Clock.System.now().toEpochMilliseconds()
+    val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
+    // Set for a playlist imported from YouTube: it can be updated from there
+    val source: PlaylistSource? = null
 )
+
+/** Where an imported YouTube playlist came from, for "Update from YouTube". */
+data class PlaylistSource(
+    val playlistId: String,
+    // Every video imported so far: one you removed here isn't added back by an update
+    val knownVideoIds: Set<String> = emptySet(),
+    val updatedAt: Long = 0L
+) {
+    val url: String get() = youTubePlaylistUrl(playlistId)
+}
+
+/** The video a track plays, so the same song is recognized whichever link form it was saved with. */
+internal fun OnlineTrack.videoKey(): String = youTubeVideoId(webUrl.ifBlank { id }) ?: id
 
 /**
  * Manages persistence for Favorites, Recently Played tracks, and Custom User Playlists
@@ -155,6 +170,46 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         _customPlaylists.value = updated
         savePlaylists(updated)
         return newPlaylist
+    }
+
+    /** The playlist imported from the YouTube playlist with this ID, if there is one. */
+    fun playlistFromYouTube(youTubePlaylistId: String): Playlist? =
+        _customPlaylists.value.firstOrNull { it.source?.playlistId == youTubePlaylistId }
+
+    /** A YouTube playlist imported as a new playlist of streamed songs that remembers where it came from. */
+    fun importYouTubePlaylist(name: String, youTubePlaylistId: String, tracks: List<OnlineTrack>, now: Long): Playlist {
+        val unique = tracks.distinctBy { it.videoKey() }
+        val playlist = Playlist(
+            name = name.trim().ifEmpty { "YouTube playlist" },
+            onlineTracks = unique,
+            createdAt = now,
+            source = PlaylistSource(youTubePlaylistId, unique.mapTo(mutableSetOf()) { it.videoKey() }, now)
+        )
+        val updated = _customPlaylists.value + playlist
+        _customPlaylists.value = updated
+        savePlaylists(updated)
+        return playlist
+    }
+
+    /**
+     * Adds the songs added to the YouTube playlist since the last update ([tracks] is the playlist as it
+     * is now) to the end, and returns how many. Songs you removed here aren't added back, songs removed
+     * on YouTube stay here, and your order is kept.
+     */
+    fun applyYouTubeUpdate(playlistId: String, tracks: List<OnlineTrack>, now: Long): Int {
+        var added = 0
+        updatePlaylist(playlistId) { playlist ->
+            val source = playlist.source ?: return@updatePlaylist playlist
+            val present = playlist.onlineTracks.mapTo(mutableSetOf()) { it.videoKey() }
+            val new = tracks.distinctBy { it.videoKey() }
+                .filter { it.videoKey() !in source.knownVideoIds && it.videoKey() !in present }
+            added = new.size
+            playlist.copy(
+                onlineTracks = playlist.onlineTracks + new,
+                source = source.copy(knownVideoIds = source.knownVideoIds + tracks.map { it.videoKey() }, updatedAt = now)
+            )
+        }
+        return added
     }
 
     fun deletePlaylist(playlistId: String) {
@@ -344,7 +399,8 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
             val trackIds = existing.onlineTracks.map { it.id }.toSet()
             updated[index] = existing.copy(
                 songIds = existing.songIds + restored.songIds.filter { it !in existing.songIds },
-                onlineTracks = existing.onlineTracks + restored.onlineTracks.filter { it.id !in trackIds }
+                onlineTracks = existing.onlineTracks + restored.onlineTracks.filter { it.id !in trackIds },
+                source = existing.source ?: restored.source
             )
         }
         _customPlaylists.value = updated
@@ -370,9 +426,20 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         val name: String,
         val createdAt: Long = 0L,
         val songIds: List<Long> = emptyList(),
-        val onlineTracks: List<OnlineTrackJson> = emptyList()
+        val onlineTracks: List<OnlineTrackJson> = emptyList(),
+        // Since v0.9.9: the YouTube playlist it was imported from
+        val source: PlaylistSourceJson? = null
     ) {
-        fun toPlaylist() = Playlist(id, name, songIds, onlineTracks.map { it.toTrack() }, createdAt)
+        fun toPlaylist() = Playlist(id, name, songIds, onlineTracks.map { it.toTrack() }, createdAt, source?.toSource())
+    }
+
+    @Serializable
+    private class PlaylistSourceJson(
+        val playlistId: String,
+        val knownVideoIds: List<String> = emptyList(),
+        val updatedAt: Long = 0L
+    ) {
+        fun toSource() = PlaylistSource(playlistId, knownVideoIds.toSet(), updatedAt)
     }
 
     @Serializable
@@ -389,7 +456,8 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
 
     private fun Playlist.toJson() = PlaylistJson(
         id, name, createdAt, songIds,
-        onlineTracks.map { OnlineTrackJson(it.id, it.title, it.artist, it.durationSeconds, it.thumbnailUrl ?: "", it.webUrl) }
+        onlineTracks.map { OnlineTrackJson(it.id, it.title, it.artist, it.durationSeconds, it.thumbnailUrl ?: "", it.webUrl) },
+        source?.let { PlaylistSourceJson(it.playlistId, it.knownVideoIds.toList(), it.updatedAt) }
     )
 
     companion object {
