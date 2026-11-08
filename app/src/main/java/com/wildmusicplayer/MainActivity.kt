@@ -150,6 +150,7 @@ import com.wildmusicplayer.data.PlaylistRepository
 import com.wildmusicplayer.data.UpdateChecker
 import com.wildmusicplayer.data.YouTubeDownloadManager
 import com.wildmusicplayer.data.YouTubePlaylistImporter
+import com.wildmusicplayer.service.PlaylistSyncWorker
 import com.wildmusicplayer.model.Song
 import com.wildmusicplayer.service.MusicControllerManager
 import com.wildmusicplayer.service.LoudnessAnalysisWorker
@@ -456,6 +457,11 @@ fun MusicPlayerApp(
     val playCounts by playlistRepository.playCounts.collectAsState()
     val favoriteSongIds by playlistRepository.favoriteSongIds.collectAsState()
     val customPlaylists by playlistRepository.customPlaylists.collectAsState()
+    // Imported and "Keep downloaded" playlists are kept up to date in the background (GitHub version)
+    val needsPlaylistSync = customPlaylists.any { it.source != null || it.keepDownloaded }
+    LaunchedEffect(needsPlaylistSync) {
+        PlaylistSyncWorker.schedule(context, customPlaylists)
+    }
     val completedTrackIds by SongDownloadService.completedTrackIds.collectAsState()
 
     // Normalization on: whenever the library reloads, measure any songs that are new since the last run
@@ -918,6 +924,11 @@ fun MusicPlayerApp(
                                 // Playlists imported from YouTube keep up with it (GitHub version)
                                 onUpdateFromYouTube = if (BuildConfig.YOUTUBE) {
                                     { playlist -> playlistImporter.update(playlist) }
+                                } else {
+                                    null
+                                },
+                                onKeepDownloadedChange = if (BuildConfig.YOUTUBE) {
+                                    { playlist, on -> playlistRepository.setKeepDownloaded(playlist.id, on) }
                                 } else {
                                     null
                                 }

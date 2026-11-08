@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
@@ -163,7 +164,9 @@ fun PlaylistsScreen(
     // A custom playlist started playing (for the app icon's "last playlist" shortcut)
     onPlaylistPlayed: (Playlist) -> Unit = {},
     // GitHub version: "Update from YouTube" for an imported playlist (how many songs it added, or why it failed)
-    onUpdateFromYouTube: (suspend (Playlist) -> Result<Int>)? = null
+    onUpdateFromYouTube: (suspend (Playlist) -> Result<Int>)? = null,
+    // GitHub version: the "Keep downloaded" switch of a playlist with online songs
+    onKeepDownloadedChange: ((Playlist, Boolean) -> Unit)? = null
 ) {
     val mostPlayedSongs = remember(allSongs, playCounts) {
         allSongs.filter { (playCounts[it.id] ?: 0) > 0 }
@@ -575,6 +578,10 @@ fun PlaylistsScreen(
                 title = playlist.name,
                 subtitle = subtitle,
                 sourceLabel = source?.let { "From YouTube · ${updatedAgoText(it.updatedAt, now)}" },
+                keepDownloaded = playlist.keepDownloaded,
+                onKeepDownloadedChange = onKeepDownloadedChange
+                    ?.takeIf { downloader != null && playlist.onlineTracks.isNotEmpty() }
+                    ?.let { change -> { on: Boolean -> change(playlist, on) } },
                 onUpdateFromYouTube = updateFromYouTube,
                 autoUpdate = updateFromYouTube != null && !isOfflineOnlyMode &&
                     now - (source?.updatedAt ?: now) > PLAYLIST_AUTO_UPDATE_MS,
@@ -936,7 +943,10 @@ private fun PlaylistDetailView(
     // Imported from YouTube: "From YouTube · updated 3 h ago", the update button, and whether to update now
     sourceLabel: String? = null,
     onUpdateFromYouTube: (suspend () -> Result<Int>)? = null,
-    autoUpdate: Boolean = false
+    autoUpdate: Boolean = false,
+    // "Keep downloaded": the online songs download by themselves; null hides the switch
+    keepDownloaded: Boolean = false,
+    onKeepDownloadedChange: ((Boolean) -> Unit)? = null
 ) {
     val showMessage = LocalShowMessage.current
     val updateScope = rememberCoroutineScope()
@@ -1131,6 +1141,19 @@ private fun PlaylistDetailView(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Sync All", style = MaterialTheme.typography.labelSmall)
                     }
+                }
+            }
+        }
+
+        if (onKeepDownloadedChange != null && downloader != null) {
+            KeepDownloadedRow(keepDownloaded, onKeepDownloadedChange)
+            // While it's on, whatever isn't on the phone yet downloads (new songs from an update too),
+            // as far as the download settings allow right now; the background check does the rest
+            val missingIds = notDownloaded.map { it.id }
+            LaunchedEffect(keepDownloaded, missingIds) {
+                if (keepDownloaded && notDownloaded.isNotEmpty() && downloader.blockedReason() == null) {
+                    val active = downloader.activeDownloads.value.keys
+                    downloader.start(notDownloaded.filter { it.id !in active })
                 }
             }
         }
@@ -1617,3 +1640,30 @@ private fun startDownloads(
 private fun downloadedCopyOf(track: OnlineTrack, allSongs: List<Song>, downloadIndex: DownloadIndex?): Song? =
     downloadIndex?.downloadedIdFor(track.webUrl.ifBlank { track.id })
         ?.let { id -> allSongs.find { it.id == id } }
+
+/** The "Keep downloaded" switch under a playlist with online songs. */
+@Composable
+private fun KeepDownloadedRow(keepDownloaded: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Keep downloaded",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "New songs download by themselves, in the background on Wi-Fi. Good for the car.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Switch(checked = keepDownloaded, onCheckedChange = onChange)
+    }
+}

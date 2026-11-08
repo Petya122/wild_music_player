@@ -28,7 +28,9 @@ data class Playlist(
     val onlineTracks: List<OnlineTrack> = emptyList(),
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
     // Set for a playlist imported from YouTube: it can be updated from there
-    val source: PlaylistSource? = null
+    val source: PlaylistSource? = null,
+    // Its online songs are downloaded by themselves (new ones too), for listening without mobile data
+    val keepDownloaded: Boolean = false
 )
 
 /** Where an imported YouTube playlist came from, for "Update from YouTube". */
@@ -210,6 +212,11 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
             )
         }
         return added
+    }
+
+    /** "Keep downloaded": the app downloads this playlist's online songs by itself, new ones too. */
+    fun setKeepDownloaded(playlistId: String, on: Boolean) {
+        updatePlaylist(playlistId) { it.copy(keepDownloaded = on) }
     }
 
     fun deletePlaylist(playlistId: String) {
@@ -400,7 +407,8 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
             updated[index] = existing.copy(
                 songIds = existing.songIds + restored.songIds.filter { it !in existing.songIds },
                 onlineTracks = existing.onlineTracks + restored.onlineTracks.filter { it.id !in trackIds },
-                source = existing.source ?: restored.source
+                source = existing.source ?: restored.source,
+                keepDownloaded = existing.keepDownloaded || restored.keepDownloaded
             )
         }
         _customPlaylists.value = updated
@@ -427,10 +435,11 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
         val createdAt: Long = 0L,
         val songIds: List<Long> = emptyList(),
         val onlineTracks: List<OnlineTrackJson> = emptyList(),
-        // Since v0.9.9: the YouTube playlist it was imported from
-        val source: PlaylistSourceJson? = null
+        // Since v0.9.9: the YouTube playlist it was imported from, and "keep downloaded"
+        val source: PlaylistSourceJson? = null,
+        val keepDownloaded: Boolean = false
     ) {
-        fun toPlaylist() = Playlist(id, name, songIds, onlineTracks.map { it.toTrack() }, createdAt, source?.toSource())
+        fun toPlaylist() = Playlist(id, name, songIds, onlineTracks.map { it.toTrack() }, createdAt, source?.toSource(), keepDownloaded)
     }
 
     @Serializable
@@ -457,7 +466,8 @@ class PlaylistRepository(private val prefs: KeyValueStore) {
     private fun Playlist.toJson() = PlaylistJson(
         id, name, createdAt, songIds,
         onlineTracks.map { OnlineTrackJson(it.id, it.title, it.artist, it.durationSeconds, it.thumbnailUrl ?: "", it.webUrl) },
-        source?.let { PlaylistSourceJson(it.playlistId, it.knownVideoIds.toList(), it.updatedAt) }
+        source?.let { PlaylistSourceJson(it.playlistId, it.knownVideoIds.toList(), it.updatedAt) },
+        keepDownloaded
     )
 
     companion object {

@@ -75,6 +75,16 @@ class YouTubePlaylistImporter(
     }
 }
 
+/** A playlist's online song as something the downloader can fetch. */
+fun OnlineTrack.toYouTubeTrack(): YouTubeTrack = YouTubeTrack(
+    id = id,
+    title = title,
+    uploaderName = artist,
+    durationSeconds = durationSeconds,
+    thumbnailUrl = thumbnailUrl,
+    webUrl = webUrl
+)
+
 /** A YouTube result as a streamed song in a playlist. */
 fun YouTubeTrack.toOnlineTrack(): OnlineTrack = OnlineTrack(
     id = id,

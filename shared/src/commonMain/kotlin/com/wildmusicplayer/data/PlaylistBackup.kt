@@ -44,7 +44,8 @@ object PlaylistBackup {
                     },
                     youTubePlaylistId = playlist.source?.playlistId,
                     youTubeKnownVideoIds = playlist.source?.knownVideoIds?.toList().orEmpty(),
-                    youTubeUpdatedAt = playlist.source?.updatedAt ?: 0L
+                    youTubeUpdatedAt = playlist.source?.updatedAt ?: 0L,
+                    keepDownloaded = playlist.keepDownloaded
                 )
             },
             favorites = describe(repository.favoriteSongIds.value),
@@ -75,7 +76,8 @@ object PlaylistBackup {
                 createdAt = saved.createdAt,
                 source = saved.youTubePlaylistId?.let {
                     PlaylistSource(it, saved.youTubeKnownVideoIds.toSet(), saved.youTubeUpdatedAt)
-                }
+                },
+                keepDownloaded = saved.keepDownloaded
             )
         }
         val favorites = backup.favorites.mapNotNull { matcher.find(it) }.toSet()
@@ -140,7 +142,8 @@ internal class BackupPlaylistJson(
     // A playlist imported from YouTube: its playlist and every video imported so far
     val youTubePlaylistId: String? = null,
     val youTubeKnownVideoIds: List<String> = emptyList(),
-    val youTubeUpdatedAt: Long = 0L
+    val youTubeUpdatedAt: Long = 0L,
+    val keepDownloaded: Boolean = false
 )
 
 @Serializable

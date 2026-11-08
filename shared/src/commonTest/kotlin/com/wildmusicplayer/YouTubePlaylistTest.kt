@@ -102,6 +102,24 @@ class YouTubePlaylistTest {
     }
 
     @Test
+    fun keepDownloadedSurvivesARestartAndABackup() {
+        val store = FakeKeyValueStore()
+        val repo = PlaylistRepository(store)
+        val playlist = repo.importYouTubePlaylist("Car", "PL3", listOf(track("a")), now = 1)
+        assertEquals(false, playlist.keepDownloaded)
+
+        repo.setKeepDownloaded(playlist.id, true)
+        assertEquals(true, PlaylistRepository(store).playlistFromYouTube("PL3")?.keepDownloaded)
+
+        val otherPhone = PlaylistRepository(FakeKeyValueStore())
+        PlaylistBackup.restore(PlaylistBackup.create(repo, emptyList(), now = 2), otherPhone, emptyList())
+        assertEquals(true, otherPhone.playlistFromYouTube("PL3")?.keepDownloaded)
+
+        repo.setKeepDownloaded(playlist.id, false)
+        assertEquals(false, PlaylistRepository(store).playlistFromYouTube("PL3")?.keepDownloaded)
+    }
+
+    @Test
     fun updatedAgo() {
         val hour = 60 * 60 * 1000L
         assertEquals("updated just now", updatedAgoText(10_000, 20_000))
