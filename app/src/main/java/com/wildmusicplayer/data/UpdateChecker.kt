@@ -226,7 +226,8 @@ class UpdateChecker private constructor(private val context: Context) {
     /** Why [apkFile] must not be installed (see [UpdateSafety.problemWith]), or null when it's fine. */
     private fun problemWithDownloadedApk(apkFile: File): String? {
         val pm = context.packageManager
-        val own = ownPackageInfo(pm) ?: return null
+        // Without this app's own details there's nothing to compare with: don't install
+        val own = ownPackageInfo(pm) ?: return UpdateSafety.UNVERIFIED
         val apk = archivePackageInfo(pm, apkFile) ?: return "The update file is damaged"
         return UpdateSafety.problemWith(
             apkPackage = apk.packageName,

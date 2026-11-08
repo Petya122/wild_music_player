@@ -28,7 +28,8 @@ internal object UpdateSafety {
 
     /**
      * Why the downloaded APK must not be installed, or null when it's a genuine update: the same package,
-     * a newer version, and (when Android could read them) the same signing certificates.
+     * a newer version, and the same signing certificates. What can't be checked isn't installed: when
+     * Android can't read the certificates (of the file or of this app), the answer is no.
      */
     fun problemWith(
         apkPackage: String?,
@@ -41,8 +42,11 @@ internal object UpdateSafety {
         apkPackage == null -> "The update file is damaged"
         apkPackage != ownPackage -> "The update file isn't Wild Music"
         apkVersionCode <= ownVersionCode -> "The update file isn't newer than this version"
-        !apkCertificates.isNullOrEmpty() && !ownCertificates.isNullOrEmpty() &&
-            apkCertificates.intersect(ownCertificates).isEmpty() -> "The update file isn't signed by Wild Music"
+        apkCertificates.isNullOrEmpty() || ownCertificates.isNullOrEmpty() -> UNVERIFIED
+        apkCertificates.intersect(ownCertificates).isEmpty() -> "The update file isn't signed by Wild Music"
         else -> null
     }
+
+    /** The answer when the signature can't be checked at all. */
+    const val UNVERIFIED = "The update file's signature couldn't be checked"
 }
